@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 // Also support GET for simple cases
 export async function GET() {
   return NextResponse.json({
-    wsUrl: 'wss://manjujayamurali--pipecat-websocket-bot-create-server.modal.run/ws',
+    wsUrl: 'wss://manjujayamurali--pipecat-websocket-bot-fastapi-app.modal.run/ws',
     message: 'Direct WebSocket URL for basic connection'
   });
 }
