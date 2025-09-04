@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 
 export default function Page() {
-  const [endpoint, setEndpoint] = useState("/api/pipecat/start");
+  const [endpoint, setEndpoint] = useState("https://manjujayamurali--pipecat-websocket-bot-create-server.modal.run");
   const [initialPrompt, setInitialPrompt] = useState("You are a helpful voice assistant.");
   const [showConnectionDialog, setShowConnectionDialog] = useState(false);
 
