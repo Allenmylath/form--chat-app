@@ -91,6 +91,10 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   };
 
   const toggleMic = () => {
+    if (!isConnected) {
+      toast.error('Please connect to bot first');
+      return;
+    }
     enableMic(!isMicEnabled);
     toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
   };
@@ -121,24 +125,23 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           </CardTitle>
           
           <div className="flex items-center gap-2">
-            {/* Mic Toggle */}
-            {isConnected && (
-              <Button
-                variant={isMicEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={toggleMic}
-                disabled={!isBotReady}
-                className="gap-2"
-              >
-                {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                {isMicEnabled ? 'Mic On' : 'Mic Off'}
-              </Button>
-            )}
+            {/* Mic Toggle - Always visible now */}
+            <Button
+              variant={isMicEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={toggleMic}
+              disabled={!isConnected || !isBotReady}
+              className="gap-2"
+            >
+              {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              {isMicEnabled ? 'Mic On' : 'Mic Off'}
+            </Button>
 
             {/* Status Indicators */}
             <div className="flex items-center gap-1">
               {isBotSpeaking && <Badge variant="secondary" className="text-blue-600">🗣️ Bot Speaking</Badge>}
               {isUserSpeaking && <Badge variant="secondary" className="text-green-600">🎤 You Speaking</Badge>}
+              {!isConnected && <Badge variant="outline" className="text-muted-foreground">⚡ Ready to Connect</Badge>}
             </div>
           </div>
         </div>
@@ -169,7 +172,11 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                     <p>Waiting for assistant to be ready...</p>
                   )
                 ) : (
-                  <p>Connect to start chatting with your assistant</p>
+                  <>
+                    <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>Connect to start chatting with your assistant</p>
+                    <p className="text-xs mt-1">Use the Connect button in the top-right corner</p>
+                  </>
                 )}
               </div>
             ) : (
@@ -204,66 +211,66 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           <div ref={messagesEndRef} />
         </ScrollArea>
 
-        {/* Input Area */}
-        {isConnected && (
-          <>
-            <Separator className="mb-4" />
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder={
-                    isBotSpeaking 
-                      ? "Bot is speaking... please wait" 
-                      : isBotReady 
-                      ? "Type your message here..." 
-                      : "Waiting for assistant..."
-                  }
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  disabled={isTextareaDisabled}
-                  className={`flex-1 min-h-[100px] resize-none ${
-                    isBotSpeaking ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                />
-                
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!input.trim() || isTextareaDisabled}
-                  size="sm"
-                  className="gap-2 h-fit self-end"
-                >
-                  <CornerDownLeft className="w-4 h-4" />
-                  Enter
-                </Button>
-              </div>
+        {/* Input Area - Always visible now */}
+        <Separator className="mb-4" />
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Textarea
+              placeholder={
+                !isConnected
+                  ? "Connect to bot to start typing..." 
+                  : isBotSpeaking 
+                  ? "Bot is speaking... please wait" 
+                  : isBotReady 
+                  ? "Type your message here..." 
+                  : "Waiting for assistant..."
+              }
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              disabled={isTextareaDisabled}
+              className={`flex-1 min-h-[100px] resize-none ${
+                isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            />
+            
+            <Button
+              onClick={handleSendMessage}
+              disabled={!input.trim() || isTextareaDisabled}
+              size="sm"
+              className="gap-2 h-fit self-end"
+            >
+              <CornerDownLeft className="w-4 h-4" />
+              Enter
+            </Button>
+          </div>
 
-              <div className="flex justify-between items-center">
-                <div className="text-xs text-muted-foreground">
-                  {isBotSpeaking ? (
-                    <span className="text-amber-600">⚠️ Typing disabled while bot is speaking</span>
-                  ) : (
-                    <span>💬 Press Enter to send • Shift + Enter for new line</span>
-                  )}
-                </div>
-
-                <Button
-                  onClick={clearMessages}
-                  disabled={messages.length === 0}
-                  variant="outline"
-                  size="sm"
-                >
-                  Clear Chat
-                </Button>
-              </div>
+          <div className="flex justify-between items-center">
+            <div className="text-xs text-muted-foreground">
+              {!isConnected ? (
+                <span className="text-blue-600">🔌 Connect to bot to enable all features</span>
+              ) : isBotSpeaking ? (
+                <span className="text-amber-600">⚠️ Typing disabled while bot is speaking</span>
+              ) : (
+                <span>💬 Press Enter to send • Shift + Enter for new line</span>
+              )}
             </div>
-          </>
-        )}
+
+            <Button
+              onClick={clearMessages}
+              disabled={messages.length === 0}
+              variant="outline"
+              size="sm"
+            >
+              Clear Chat
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
