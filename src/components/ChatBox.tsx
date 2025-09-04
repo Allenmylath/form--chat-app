@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, MessageSquare, Mic } from "lucide-react";
+import { Send, MessageSquare, Mic, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 interface ChatBoxProps {
@@ -27,6 +27,7 @@ interface ChatBoxProps {
     error: string | null;
     sendMessage: (msgType: string, data: any) => void;
     sendRequest: (msgType: string, data: any) => Promise<any>;
+    appendToContext: (context: any) => Promise<boolean>;
     clearMessages: () => void;
   };
 }
@@ -47,6 +48,7 @@ export default function ChatBox({ pipecatClient }: ChatBoxProps) {
     messages,
     sendMessage,
     sendRequest,
+    appendToContext,
     clearMessages,
   } = pipecatClient;
 
@@ -111,6 +113,33 @@ export default function ChatBox({ pipecatClient }: ChatBoxProps) {
       toast.success("Request sent and response received");
     } catch (err: any) {
       toast.error(err.message || "Failed to send request");
+    }
+  };
+
+  const handleAppendContext = async () => {
+    if (!inputValue.trim()) return;
+    if (!client || !isConnected) {
+      toast.error("Not connected to voice assistant");
+      return;
+    }
+
+    try {
+      // Append context without showing as a visible message
+      const success = await appendToContext({
+        role: 'user',
+        content: inputValue.trim(),
+        timestamp: new Date().toISOString(),
+        type: 'context'
+      });
+      
+      if (success) {
+        setInputValue("");
+        toast.success("Context added to conversation (invisible to chat)");
+      } else {
+        toast.error("Failed to add context");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to append context");
     }
   };
 
@@ -303,12 +332,23 @@ export default function ChatBox({ pipecatClient }: ChatBoxProps) {
               >
                 Req
               </Button>
+              <Button
+                onClick={handleAppendContext}
+                disabled={!inputValue.trim() || !isConnected || !isBotReady}
+                size="sm"
+                variant="ghost"
+                className="px-3"
+                aria-label="Add as hidden context"
+                title="Add to bot's context without showing in chat"
+              >
+                <EyeOff className="w-4 h-4" />
+              </Button>
             </div>
           </div>
           
           <p className="text-xs text-muted-foreground mt-2">
             {isConnected && isBotReady 
-              ? "Press Enter to send message, use Req button for requests. Voice input is active."
+              ? "Send (Enter) | Request (Req) | Hidden Context (👁️‍🗨️). Voice input is active."
               : "Connect to voice assistant to start chatting..."
             }
           </p>

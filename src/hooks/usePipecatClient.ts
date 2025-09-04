@@ -30,6 +30,7 @@ interface UsePipecatClientReturn {
   disconnect: () => Promise<void>;
   sendMessage: (msgType: string, data?: any) => void;
   sendRequest: (msgType: string, data?: any) => Promise<any>;
+  appendToContext: (context: any) => Promise<boolean>;
   clearMessages: () => void;
 }
 
@@ -314,6 +315,32 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, isConnected]);
 
+  const appendToContext = useCallback(async (context: any): Promise<boolean> => {
+    if (!client || !isConnected) {
+      console.warn('Cannot append to context: client not connected');
+      setError('Not connected to bot');
+      return false;
+    }
+
+    try {
+      // Use the client's appendToContext method if available
+      if (client.appendToContext) {
+        await client.appendToContext(context);
+        console.log('Context appended:', context);
+        return true;
+      } else {
+        // Fallback: send as a context message if appendToContext is not available
+        client.sendClientMessage('context', { context });
+        console.log('Context sent as message:', context);
+        return true;
+      }
+    } catch (err: any) {
+      console.error('Failed to append context:', err);
+      setError(err.message || 'Failed to append context');
+      return false;
+    }
+  }, [client, isConnected]);
+
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
@@ -343,6 +370,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     disconnect,
     sendMessage,
     sendRequest,
+    appendToContext,
     clearMessages,
   };
 };
