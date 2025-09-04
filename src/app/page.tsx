@@ -26,10 +26,14 @@ export default function Page() {
 
   const handleConnect = async () => {
     try {
-      // Use the /connect endpoint - this will call your backend's /connect route
-      // which returns the WebSocket URL, then connect to it
-      await startBotAndConnect("https://manjujayamurali--pipecat-websocket-bot-create-server.modal.run");
-      toast.success("Connecting to voice assistant...");
+      // This should be your server endpoint that returns { wsUrl: "ws://..." }
+      // NOT the WebSocket URL directly
+      await startBotAndConnect("/api/start", {
+        // Optional: any data you want to pass to your server
+        initial_prompt: "You are a helpful assistant",
+        user_id: "user-123"
+      });
+      toast.success("Connected to voice assistant!");
     } catch (err: any) {
       toast.error(err.message || "Failed to connect");
     }
