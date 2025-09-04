@@ -1,358 +1,492 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Send, MessageSquare, Mic, Eye, EyeOff } from "lucide-react";
-import { toast } from "sonner";
+import { useState, useRef, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { 
+  Send, 
+  MessageSquare, 
+  EyeOff, 
+  Mic, 
+  MicOff, 
+  Video, 
+  VideoOff, 
+  Monitor, 
+  MonitorOff,
+  Settings,
+  Volume2,
+  Headphones
+} from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ChatBoxProps {
-  pipecatClient: {
-    client: any;
-    isConnected: boolean;
-    isConnecting: boolean;
-    isBotReady: boolean;
-    isBotSpeaking: boolean;
-    isUserSpeaking: boolean;
-    messages: Array<{
-      id: string;
-      type: 'user' | 'bot' | 'system';
-      content: string;
-      timestamp: Date;
-    }>;
-    error: string | null;
-    sendMessage: (msgType: string, data: any) => void;
-    sendRequest: (msgType: string, data: any) => Promise<any>;
-    appendToContext: (context: any) => Promise<boolean>;
-    clearMessages: () => void;
-  };
+  pipecatClient: any;
+  className?: string;
 }
 
-export default function ChatBox({ pipecatClient }: ChatBoxProps) {
-  const [inputValue, setInputValue] = useState("");
+interface BotMessage {
+  id: string;
+  type: 'bot' | 'user' | 'system';
+  content: string;
+  timestamp: Date;
+}
+
+export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // Device lists
+  const [availableMics, setAvailableMics] = useState<MediaDeviceInfo[]>([]);
+  const [availableCams, setAvailableCams] = useState<MediaDeviceInfo[]>([]);
+  const [availableSpeakers, setAvailableSpeakers] = useState<MediaDeviceInfo[]>([]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
 
   const {
-    client,
     isConnected,
     isBotReady,
     isBotSpeaking,
     isUserSpeaking,
     messages,
+    error,
     sendMessage,
     sendRequest,
     appendToContext,
     clearMessages,
+    
+    // Device methods and state
+    initDevices,
+    getAllMics,
+    getAllCams,
+    getAllSpeakers,
+    updateMic,
+    updateCam,
+    updateSpeaker,
+    enableMic,
+    enableCam,
+    enableScreenShare,
+    selectedMic,
+    selectedCam,
+    selectedSpeaker,
+    isMicEnabled,
+    isCamEnabled,
+    isSharingScreen,
+    
+    // Advanced methods
+    registerFunctionCallHandler,
+    setLogLevel,
   } = pipecatClient;
 
-  // Auto-scroll to bottom for new messages if user is near bottom
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (messages.length > 0 && isNearBottomRef.current) {
-      scrollToBottom();
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle scroll position detection
+  // Initialize devices and register function handlers when connected
   useEffect(() => {
-    const scrollContainer = scrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]");
-    if (!scrollContainer) return;
+    if (isConnected && isBotReady) {
+      handleInitDevices();
+      
+      // Register example function call handlers
+      registerFunctionCallHandler('get_user_info', async (params) => {
+        console.log('Function call: get_user_info', params);
+        return { user_id: '123', name: 'User', status: 'active' };
+      });
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      isNearBottomRef.current = isNearBottom;
-    };
+      registerFunctionCallHandler('clear_chat', async (params) => {
+        console.log('Function call: clear_chat', params);
+        clearMessages();
+        toast.success('Chat cleared');
+        return { success: true };
+      });
 
-    scrollContainer.addEventListener("scroll", handleScroll);
-    return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, [messages.length]);
+      // Set log level for debugging
+      setLogLevel(3); // INFO level
+    }
+  }, [isConnected, isBotReady]);
 
-  const scrollToBottom = (smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ 
-      behavior: smooth ? "smooth" : "instant",
-      block: "end"
-    });
+  const handleInitDevices = async () => {
+    try {
+      await initDevices();
+      const [mics, cams, speakers] = await Promise.all([
+        getAllMics(),
+        getAllCams(),
+        getAllSpeakers()
+      ]);
+      setAvailableMics(mics);
+      setAvailableCams(cams);
+      setAvailableSpeakers(speakers);
+    } catch (err: any) {
+      console.error('Failed to initialize devices:', err);
+      toast.error('Failed to initialize devices');
+    }
   };
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
-    if (!client || !isConnected) {
-      toast.error("Not connected to voice assistant");
-      return;
-    }
+  const handleSendMessage = async () => {
+    if (!input.trim() || !isConnected) return;
+
+    const message = input.trim();
+    setInput('');
+    setIsLoading(true);
 
     try {
-      // Send a custom message to the bot
-      sendMessage('user-message', { text: inputValue.trim() });
-      setInputValue("");
-      toast.success("Message sent");
+      sendMessage('user_message', { content: message });
+      toast.success('Message sent');
     } catch (err: any) {
-      toast.error(err.message || "Failed to send message");
+      toast.error(err.message || 'Failed to send message');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSendRequest = async () => {
-    if (!inputValue.trim()) return;
-    if (!client || !isConnected) {
-      toast.error("Not connected to voice assistant");
-      return;
-    }
+    if (!input.trim() || !isConnected) return;
+
+    const message = input.trim();
+    setInput('');
+    setIsLoading(true);
 
     try {
-      // Send a request and wait for response
-      const response = await sendRequest('user-query', { query: inputValue.trim() });
-      console.log('Response received:', response);
-      setInputValue("");
-      toast.success("Request sent and response received");
+      const response = await sendRequest('user_request', { content: message }, 15000);
+      console.log('Bot response:', response);
+      toast.success('Request sent and response received');
     } catch (err: any) {
-      toast.error(err.message || "Failed to send request");
+      toast.error(err.message || 'Request failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleAppendContext = async () => {
-    if (!inputValue.trim()) return;
-    if (!client || !isConnected) {
-      toast.error("Not connected to voice assistant");
-      return;
-    }
+    if (!input.trim() || !isConnected) return;
+
+    const context = input.trim();
+    setInput('');
 
     try {
-      // Append context without showing as a visible message
       const success = await appendToContext({
         role: 'user',
-        content: inputValue.trim(),
-        timestamp: new Date().toISOString(),
-        type: 'context'
+        content: context,
+        run_immediately: false
       });
       
       if (success) {
-        setInputValue("");
-        toast.success("Context added to conversation (invisible to chat)");
+        toast.success('Context added silently');
       } else {
-        toast.error("Failed to add context");
+        toast.error('Failed to add context');
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to append context");
+      toast.error(err.message || 'Failed to add context');
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+  const toggleMic = () => {
+    enableMic(!isMicEnabled);
+    toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const toggleCam = () => {
+    enableCam(!isCamEnabled);
+    toast.info(isCamEnabled ? 'Camera disabled' : 'Camera enabled');
   };
 
-  const formatDate = (date: Date) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return "Today";
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
-    } else {
-      return date.toLocaleDateString();
-    }
+  const toggleScreenShare = () => {
+    enableScreenShare(!isSharingScreen);
+    toast.info(isSharingScreen ? 'Screen share stopped' : 'Screen share started');
   };
 
-  // Group messages by date
-  const groupedMessages = messages.reduce((groups: { [key: string]: typeof messages }, message) => {
-    const dateKey = message.timestamp.toDateString();
-    if (!groups[dateKey]) {
-      groups[dateKey] = [];
-    }
-    groups[dateKey].push(message);
-    return groups;
-  }, {});
+  const formatTimestamp = (timestamp: Date) => {
+    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
-  const getMessageAvatar = (type: string) => {
+  const getMessageIcon = (type: BotMessage['type']) => {
     switch (type) {
-      case 'user': return 'U';
-      case 'bot': return 'A';
-      case 'system': return 'S';
-      default: return '?';
-    }
-  };
-
-  const getMessageStyle = (type: string) => {
-    switch (type) {
-      case 'user':
-        return "bg-primary text-primary-foreground";
-      case 'bot':
-        return "bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100";
-      case 'system':
-        return "bg-muted text-muted-foreground border border-border";
-      default:
-        return "bg-muted text-foreground";
+      case 'bot': return '🤖';
+      case 'user': return '👤';
+      case 'system': return '⚙️';
+      default: return '💬';
     }
   };
 
   return (
-    <Card className="h-full flex flex-col bg-card">
+    <Card className={`flex flex-col h-full ${className}`}>
       <CardHeader className="flex-shrink-0 pb-3">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
             <MessageSquare className="w-5 h-5" />
-            Chat Assistant
-            {isUserSpeaking && <Mic className="w-4 h-4 text-green-600 animate-pulse" />}
-            {isBotSpeaking && <div className="w-4 h-4 bg-blue-600 rounded-full animate-pulse" />}
-          </div>
-        </CardTitle>
-      </CardHeader>
-      
-      <CardContent className="flex-1 flex flex-col min-h-0 p-0">
-        <div className="flex-1 relative">
-          <ScrollArea ref={scrollAreaRef} className="h-full px-6">
-            <div className="space-y-4 py-2">
-              {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <MessageSquare className="w-12 h-12 text-muted-foreground/50 mb-4" />
-                  <p className="text-muted-foreground">No messages yet</p>
-                  <p className="text-sm text-muted-foreground">
-                    {isConnected && isBotReady ? "Start speaking or type a message" : "Connect to start chatting"}
-                  </p>
-                </div>
-              ) : (
-                Object.entries(groupedMessages).map(([dateKey, dayMessages]) => (
-                  <div key={dateKey}>
-                    <div className="flex justify-center py-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {formatDate(new Date(dateKey))}
-                      </Badge>
-                    </div>
-                    {dayMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex items-start gap-3 ${
-                          message.type === 'user' ? "flex-row-reverse" : ""
-                        }`}
-                      >
-                        <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarFallback className="text-xs">
-                            {getMessageAvatar(message.type)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div
-                          className={`max-w-[75%] rounded-lg px-3 py-2 ${getMessageStyle(message.type)}`}
+            Voice Chat Assistant
+          </CardTitle>
+          
+          <div className="flex items-center gap-2">
+            {/* Device Controls */}
+            {isConnected && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={isMicEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleMic}
+                  disabled={!isBotReady}
+                >
+                  {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                </Button>
+                
+                <Button
+                  variant={isCamEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleCam}
+                  disabled={!isBotReady}
+                >
+                  {isCamEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                </Button>
+                
+                <Button
+                  variant={isSharingScreen ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleScreenShare}
+                  disabled={!isBotReady}
+                >
+                  {isSharingScreen ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
+                </Button>
+
+                <Dialog open={showDeviceSettings} onOpenChange={setShowDeviceSettings}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Settings className="w-4 h-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Device Settings</DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 py-4">
+                      {/* Microphone Selection */}
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Mic className="w-4 h-4" />
+                          Microphone
+                        </Label>
+                        <Select 
+                          value={selectedMic?.deviceId || ""} 
+                          onValueChange={updateMic}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                          <p className="text-xs mt-1 opacity-70">
-                            {formatTime(message.timestamp)}
-                          </p>
-                        </div>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select microphone" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableMics.map((mic) => (
+                              <SelectItem key={mic.deviceId} value={mic.deviceId}>
+                                {mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                    ))}
-                  </div>
-                ))
-              )}
-              {isBotSpeaking && (
-                <div className="flex items-start gap-3">
-                  <Avatar className="w-8 h-8 flex-shrink-0">
-                    <AvatarFallback className="text-xs">A</AvatarFallback>
-                  </Avatar>
-                  <div className="bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100 rounded-lg px-3 py-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-current/50 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-current/50 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
-                      <div className="w-2 h-2 bg-current/50 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+
+                      {/* Camera Selection */}
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Video className="w-4 h-4" />
+                          Camera
+                        </Label>
+                        <Select 
+                          value={selectedCam?.deviceId || ""} 
+                          onValueChange={updateCam}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select camera" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableCams.map((cam) => (
+                              <SelectItem key={cam.deviceId} value={cam.deviceId}>
+                                {cam.label || `Camera ${cam.deviceId.slice(0, 8)}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Speaker Selection */}
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Headphones className="w-4 h-4" />
+                          Speaker
+                        </Label>
+                        <Select 
+                          value={selectedSpeaker?.deviceId || ""} 
+                          onValueChange={updateSpeaker}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select speaker" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableSpeakers.map((speaker) => (
+                              <SelectItem key={speaker.deviceId} value={speaker.deviceId}>
+                                {speaker.label || `Speaker ${speaker.deviceId.slice(0, 8)}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <Button onClick={handleInitDevices} className="w-full">
+                        Refresh Devices
+                      </Button>
                     </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+
+            {/* Status Indicators */}
+            <div className="flex items-center gap-1">
+              {isBotSpeaking && <Badge variant="secondary" className="text-blue-600">🗣️ Bot Speaking</Badge>}
+              {isUserSpeaking && <Badge variant="secondary" className="text-green-600">🎤 You Speaking</Badge>}
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
+            Error: {error}
+          </div>
+        )}
+      </CardHeader>
+
+      <Separator />
+
+      <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
+        {/* Messages */}
+        <ScrollArea className="flex-1 mb-4">
+          <div className="space-y-3">
+            {messages.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">
+                {isConnected ? (
+                  isBotReady ? (
+                    <>
+                      <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>Start a conversation with your voice assistant</p>
+                      <p className="text-xs mt-1">You can speak directly or type messages below</p>
+                    </>
+                  ) : (
+                    <p>Waiting for assistant to be ready...</p>
+                  )
+                ) : (
+                  <p>Connect to start chatting with your assistant</p>
+                )}
+              </div>
+            ) : (
+              messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex gap-3 ${
+                    message.type === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                      message.type === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : message.type === 'system'
+                        ? 'bg-muted text-muted-foreground text-xs'
+                        : 'bg-muted'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{getMessageIcon(message.type)}</span>
+                      <span className="text-xs opacity-70">
+                        {formatTimestamp(message.timestamp)}
+                      </span>
+                    </div>
+                    <p className="text-sm">{message.content}</p>
                   </div>
                 </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-        </div>
-        
-        <div className="flex-shrink-0 border-t bg-background p-4">
-          <div className="flex gap-2 items-center mb-2">
-            {isUserSpeaking && (
-              <Badge variant="secondary" className="text-xs gap-1 animate-pulse">
-                <Mic className="w-3 h-3" />
-                Speaking...
-              </Badge>
+              ))
             )}
-            {isBotSpeaking && (
-              <Badge variant="secondary" className="text-xs gap-1 animate-pulse">
-                <div className="w-3 h-3 bg-current rounded-full" />
-                Assistant speaking...
-              </Badge>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearMessages}
-              className="ml-auto text-xs"
-            >
-              Clear Messages
-            </Button>
           </div>
-          
-          <div className="flex gap-2">
-            <Textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder={isConnected && isBotReady ? "Type your message or speak..." : "Connect to start chatting..."}
-              className="min-h-[40px] max-h-[120px] resize-none"
-              rows={1}
-              disabled={!isConnected || !isBotReady}
-              aria-label="Message input"
-            />
-            <div className="flex flex-col gap-1">
-              <Button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || !isConnected || !isBotReady}
-                size="sm"
-                className="px-3"
-                aria-label="Send message"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-              <Button
-                onClick={handleSendRequest}
-                disabled={!inputValue.trim() || !isConnected || !isBotReady}
-                size="sm"
-                variant="outline"
-                className="px-3"
-                aria-label="Send request"
-              >
-                Req
-              </Button>
-              <Button
-                onClick={handleAppendContext}
-                disabled={!inputValue.trim() || !isConnected || !isBotReady}
-                size="sm"
-                variant="ghost"
-                className="px-3"
-                aria-label="Add as hidden context"
-                title="Add to bot's context without showing in chat"
-              >
-                <EyeOff className="w-4 h-4" />
-              </Button>
+          <div ref={messagesEndRef} />
+        </ScrollArea>
+
+        {/* Input Area */}
+        {isConnected && (
+          <>
+            <Separator className="mb-4" />
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  placeholder={isBotReady ? "Type a message or speak directly..." : "Waiting for assistant..."}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  disabled={!isBotReady || isLoading}
+                  className="flex-1"
+                />
+                
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!input.trim() || !isBotReady || isLoading}
+                  size="sm"
+                  className="gap-1"
+                >
+                  <Send className="w-4 h-4" />
+                  Send
+                </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSendRequest}
+                  disabled={!input.trim() || !isBotReady || isLoading}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Request
+                </Button>
+                
+                <Button
+                  onClick={handleAppendContext}
+                  disabled={!input.trim() || !isBotReady}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                >
+                  <EyeOff className="w-4 h-4" />
+                  Hidden Context
+                </Button>
+
+                <Button
+                  onClick={clearMessages}
+                  disabled={messages.length === 0}
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto"
+                >
+                  Clear Chat
+                </Button>
+              </div>
+
+              <div className="text-xs text-muted-foreground text-center">
+                💬 Send = Regular message • 📝 Request = Expect response • 👁️‍🗨️ Context = Silent background info
+              </div>
             </div>
-          </div>
-          
-          <p className="text-xs text-muted-foreground mt-2">
-            {isConnected && isBotReady 
-              ? "Send (Enter) | Request (Req) | Hidden Context (👁️‍🗨️). Voice input is active."
-              : "Connect to voice assistant to start chatting..."
-            }
-          </p>
-        </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

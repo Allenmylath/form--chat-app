@@ -11,6 +11,19 @@ interface BotMessage {
   timestamp: Date;
 }
 
+interface LLMContextMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: any;
+  run_immediately?: boolean;
+}
+
+interface FunctionCallParams {
+  functionName: string;
+  arguments: Record<string, unknown>;
+}
+
+type FunctionCallCallback = (fn: FunctionCallParams) => Promise<any | void>;
+
 interface UsePipecatClientOptions {
   enableMic?: boolean;
   enableCam?: boolean;
@@ -26,19 +39,53 @@ interface UsePipecatClientReturn {
   isUserSpeaking: boolean;
   messages: BotMessage[];
   error: string | null;
-  connectToBot: (endpoint: string, requestData?: any) => Promise<void>;
+  
+  // Connection methods
+  startBot: (endpoint: string, requestData?: any, headers?: any) => Promise<any>;
+  connect: (connectParams?: any) => Promise<any>;
+  startBotAndConnect: (endpoint: string, requestData?: any) => Promise<void>;
   disconnect: () => Promise<void>;
+  disconnectBot: () => void;
+  
+  // Messaging methods
   sendMessage: (msgType: string, data?: any) => void;
-  sendRequest: (msgType: string, data?: any) => Promise<any>;
-  appendToContext: (context: any) => Promise<boolean>;
+  sendRequest: (msgType: string, data?: any, timeout?: number) => Promise<any>;
+  appendToContext: (context: LLMContextMessage) => Promise<boolean>;
+  
+  // Device methods
+  initDevices: () => Promise<void>;
+  getAllMics: () => Promise<MediaDeviceInfo[]>;
+  getAllCams: () => Promise<MediaDeviceInfo[]>;
+  getAllSpeakers: () => Promise<MediaDeviceInfo[]>;
+  updateMic: (micId: string) => void;
+  updateCam: (camId: string) => void;
+  updateSpeaker: (speakerId: string) => void;
+  enableMic: (enable: boolean) => void;
+  enableCam: (enable: boolean) => void;
+  enableScreenShare: (enable: boolean) => void;
+  
+  // Device state
+  selectedMic: MediaDeviceInfo | null;
+  selectedCam: MediaDeviceInfo | null;
+  selectedSpeaker: MediaDeviceInfo | null;
+  isMicEnabled: boolean;
+  isCamEnabled: boolean;
+  isSharingScreen: boolean;
+  
+  // Advanced methods
+  tracks: () => any;
+  registerFunctionCallHandler: (functionName: string, callback: FunctionCallCallback) => void;
+  setLogLevel: (level: number) => void;
+  
+  // Utility methods
   clearMessages: () => void;
 }
 
 export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipecatClientReturn => {
   const {
-    enableMic = true,
-    enableCam = false,
-    enableScreenShare = false,
+    enableMic: initialEnableMic = true,
+    enableCam: initialEnableCam = false,
+    enableScreenShare: initialEnableScreenShare = false,
   } = options;
 
   const [client, setClient] = useState<PipecatClient | null>(null);
@@ -49,6 +96,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [messages, setMessages] = useState<BotMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Device states
+  const [selectedMic, setSelectedMic] = useState<MediaDeviceInfo | null>(null);
+  const [selectedCam, setSelectedCam] = useState<MediaDeviceInfo | null>(null);
+  const [selectedSpeaker, setSelectedSpeaker] = useState<MediaDeviceInfo | null>(null);
+  const [isMicEnabled, setIsMicEnabled] = useState(initialEnableMic);
+  const [isCamEnabled, setIsCamEnabled] = useState(initialEnableCam);
+  const [isSharingScreen, setIsSharingScreen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -91,9 +146,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     
     const newClient = new PipecatClient({
       transport: new DailyTransport(),
-      enableMic,
-      enableCam,
-      enableScreenShare,
+      enableMic: isMicEnabled,
+      enableCam: isCamEnabled,
+      enableScreenShare: initialEnableScreenShare,
       callbacks: {
         onConnected: () => {
           console.log('Client connected');
@@ -224,9 +279,50 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     });
 
     return newClient;
-  }, [enableMic, enableCam, enableScreenShare, addMessage, handleBotAudio]);
+  }, [isMicEnabled, isCamEnabled, initialEnableScreenShare, addMessage, handleBotAudio]);
 
-  const connectToBot = useCallback(async (endpoint: string, requestData?: any) => {
+  // Connection methods
+  const startBot = useCallback(async (endpoint: string, requestData?: any, headers?: any) => {
+    if (!client) {
+      throw new Error('Client not initialized');
+    }
+
+    try {
+      setError(null);
+      const result = await client.startBot({
+        endpoint,
+        requestData,
+        headers,
+      });
+      console.log('Bot started:', result);
+      return result;
+    } catch (err: any) {
+      console.error('Failed to start bot:', err);
+      setError(err.message || 'Failed to start bot');
+      throw err;
+    }
+  }, [client]);
+
+  const connect = useCallback(async (connectParams?: any) => {
+    if (!client) {
+      throw new Error('Client not initialized');
+    }
+
+    try {
+      setIsConnecting(true);
+      setError(null);
+      const result = await client.connect(connectParams);
+      console.log('Connected:', result);
+      return result;
+    } catch (err: any) {
+      console.error('Failed to connect:', err);
+      setError(err.message || 'Failed to connect');
+      setIsConnecting(false);
+      throw err;
+    }
+  }, [client]);
+
+  const startBotAndConnect = useCallback(async (endpoint: string, requestData?: any) => {
     console.log('Connecting to bot...', { endpoint, requestData });
     
     try {
@@ -281,6 +377,22 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     setError(null);
   }, [client]);
 
+  const disconnectBot = useCallback(() => {
+    if (!client) {
+      console.warn('Cannot disconnect bot: client not available');
+      return;
+    }
+
+    try {
+      client.disconnectBot();
+      console.log('Bot disconnected');
+    } catch (err: any) {
+      console.error('Failed to disconnect bot:', err);
+      setError(err.message || 'Failed to disconnect bot');
+    }
+  }, [client]);
+
+  // Messaging methods
   const sendMessage = useCallback((msgType: string, data?: any) => {
     if (!client || !isConnected) {
       console.warn('Cannot send message: client not connected');
@@ -297,7 +409,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, isConnected]);
 
-  const sendRequest = useCallback(async (msgType: string, data?: any): Promise<any> => {
+  const sendRequest = useCallback(async (msgType: string, data?: any, timeout?: number): Promise<any> => {
     if (!client || !isConnected) {
       console.warn('Cannot send request: client not connected');
       setError('Not connected to bot');
@@ -305,7 +417,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
 
     try {
-      const response = await client.sendClientRequest(msgType, data);
+      const response = await client.sendClientRequest(msgType, data, timeout);
       console.log('Request sent:', msgType, data, 'Response:', response);
       return response;
     } catch (err: any) {
@@ -315,7 +427,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, isConnected]);
 
-  const appendToContext = useCallback(async (context: any): Promise<boolean> => {
+  const appendToContext = useCallback(async (context: LLMContextMessage): Promise<boolean> => {
     if (!client || !isConnected) {
       console.warn('Cannot append to context: client not connected');
       setError('Not connected to bot');
@@ -341,9 +453,225 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, isConnected]);
 
+  // Device methods
+  const initDevices = useCallback(async () => {
+    if (!client) {
+      throw new Error('Client not initialized');
+    }
+
+    try {
+      await client.initDevices();
+      console.log('Devices initialized');
+    } catch (err: any) {
+      console.error('Failed to initialize devices:', err);
+      setError(err.message || 'Failed to initialize devices');
+      throw err;
+    }
+  }, [client]);
+
+  const getAllMics = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    if (!client) {
+      return [];
+    }
+
+    try {
+      const mics = await client.getAllMics();
+      console.log('Available microphones:', mics);
+      return mics;
+    } catch (err: any) {
+      console.error('Failed to get microphones:', err);
+      return [];
+    }
+  }, [client]);
+
+  const getAllCams = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    if (!client) {
+      return [];
+    }
+
+    try {
+      const cams = await client.getAllCams();
+      console.log('Available cameras:', cams);
+      return cams;
+    } catch (err: any) {
+      console.error('Failed to get cameras:', err);
+      return [];
+    }
+  }, [client]);
+
+  const getAllSpeakers = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    if (!client) {
+      return [];
+    }
+
+    try {
+      const speakers = await client.getAllSpeakers();
+      console.log('Available speakers:', speakers);
+      return speakers;
+    } catch (err: any) {
+      console.error('Failed to get speakers:', err);
+      return [];
+    }
+  }, [client]);
+
+  const updateMic = useCallback((micId: string) => {
+    if (!client) {
+      console.warn('Cannot update mic: client not available');
+      return;
+    }
+
+    try {
+      client.updateMic(micId);
+      setSelectedMic(client.selectedMic as MediaDeviceInfo || null);
+      console.log('Microphone updated:', micId);
+    } catch (err: any) {
+      console.error('Failed to update microphone:', err);
+      setError(err.message || 'Failed to update microphone');
+    }
+  }, [client]);
+
+  const updateCam = useCallback((camId: string) => {
+    if (!client) {
+      console.warn('Cannot update cam: client not available');
+      return;
+    }
+
+    try {
+      client.updateCam(camId);
+      setSelectedCam(client.selectedCam as MediaDeviceInfo || null);
+      console.log('Camera updated:', camId);
+    } catch (err: any) {
+      console.error('Failed to update camera:', err);
+      setError(err.message || 'Failed to update camera');
+    }
+  }, [client]);
+
+  const updateSpeaker = useCallback((speakerId: string) => {
+    if (!client) {
+      console.warn('Cannot update speaker: client not available');
+      return;
+    }
+
+    try {
+      client.updateSpeaker(speakerId);
+      setSelectedSpeaker(client.selectedSpeaker as MediaDeviceInfo || null);
+      console.log('Speaker updated:', speakerId);
+    } catch (err: any) {
+      console.error('Failed to update speaker:', err);
+      setError(err.message || 'Failed to update speaker');
+    }
+  }, [client]);
+
+  const enableMic = useCallback((enable: boolean) => {
+    if (!client) {
+      console.warn('Cannot enable/disable mic: client not available');
+      return;
+    }
+
+    try {
+      client.enableMic(enable);
+      setIsMicEnabled(enable);
+      console.log('Microphone', enable ? 'enabled' : 'disabled');
+    } catch (err: any) {
+      console.error('Failed to enable/disable microphone:', err);
+      setError(err.message || 'Failed to enable/disable microphone');
+    }
+  }, [client]);
+
+  const enableCam = useCallback((enable: boolean) => {
+    if (!client) {
+      console.warn('Cannot enable/disable cam: client not available');
+      return;
+    }
+
+    try {
+      client.enableCam(enable);
+      setIsCamEnabled(enable);
+      console.log('Camera', enable ? 'enabled' : 'disabled');
+    } catch (err: any) {
+      console.error('Failed to enable/disable camera:', err);
+      setError(err.message || 'Failed to enable/disable camera');
+    }
+  }, [client]);
+
+  const enableScreenShare = useCallback((enable: boolean) => {
+    if (!client) {
+      console.warn('Cannot enable/disable screen share: client not available');
+      return;
+    }
+
+    try {
+      client.enableScreenShare(enable);
+      setIsSharingScreen(enable);
+      console.log('Screen share', enable ? 'enabled' : 'disabled');
+    } catch (err: any) {
+      console.error('Failed to enable/disable screen share:', err);
+      setError(err.message || 'Failed to enable/disable screen share');
+    }
+  }, [client]);
+
+  // Advanced methods
+  const tracks = useCallback(() => {
+    if (!client) {
+      return null;
+    }
+
+    try {
+      return client.tracks();
+    } catch (err: any) {
+      console.error('Failed to get tracks:', err);
+      return null;
+    }
+  }, [client]);
+
+  const registerFunctionCallHandler = useCallback((functionName: string, callback: FunctionCallCallback) => {
+    if (!client) {
+      console.warn('Cannot register function call handler: client not available');
+      return;
+    }
+
+    try {
+      client.registerFunctionCallHandler(functionName, callback);
+      console.log('Function call handler registered:', functionName);
+    } catch (err: any) {
+      console.error('Failed to register function call handler:', err);
+      setError(err.message || 'Failed to register function call handler');
+    }
+  }, [client]);
+
+  const setLogLevel = useCallback((level: number) => {
+    if (!client) {
+      console.warn('Cannot set log level: client not available');
+      return;
+    }
+
+    try {
+      client.setLogLevel(level);
+      console.log('Log level set to:', level);
+    } catch (err: any) {
+      console.error('Failed to set log level:', err);
+    }
+  }, [client]);
+
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
+
+  // Update device states when client changes
+  useEffect(() => {
+    if (client) {
+      try {
+        setSelectedMic(client.selectedMic as MediaDeviceInfo || null);
+        setSelectedCam(client.selectedCam as MediaDeviceInfo || null);
+        setSelectedSpeaker(client.selectedSpeaker as MediaDeviceInfo || null);
+        setIsMicEnabled(client.isMicEnabled || false);
+        setIsCamEnabled(client.isCamEnabled || false);
+        setIsSharingScreen(client.isSharingScreen || false);
+      } catch (err) {
+        console.log('Client device properties not yet available');
+      }
+    }
+  }, [client, isConnected]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -366,11 +694,45 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     isUserSpeaking,
     messages,
     error,
-    connectToBot,
+    
+    // Connection methods
+    startBot,
+    connect,
+    startBotAndConnect,
     disconnect,
+    disconnectBot,
+    
+    // Messaging methods
     sendMessage,
     sendRequest,
     appendToContext,
+    
+    // Device methods
+    initDevices,
+    getAllMics,
+    getAllCams,
+    getAllSpeakers,
+    updateMic,
+    updateCam,
+    updateSpeaker,
+    enableMic,
+    enableCam,
+    enableScreenShare,
+    
+    // Device state
+    selectedMic,
+    selectedCam,
+    selectedSpeaker,
+    isMicEnabled,
+    isCamEnabled,
+    isSharingScreen,
+    
+    // Advanced methods
+    tracks,
+    registerFunctionCallHandler,
+    setLogLevel,
+    
+    // Utility methods
     clearMessages,
   };
 };
