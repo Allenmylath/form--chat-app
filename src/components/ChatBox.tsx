@@ -53,25 +53,25 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setLogLevel,
   } = pipecatClient;
 
+  // Enhanced scroll to bottom with better reliability
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
+      });
+    }
+  };
+
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom();
   }, [messages]);
 
-  // Auto-scroll to bottom with better reliability
+  // Additional scroll with delay to ensure DOM updates
   useEffect(() => {
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'smooth',
-          block: 'end',
-          inline: 'nearest'
-        });
-      }
-    };
-
-    // Small delay to ensure DOM updates
-    const timeoutId = setTimeout(scrollToBottom, 100);
+    const timeoutId = setTimeout(scrollToBottom, 150);
     return () => clearTimeout(timeoutId);
   }, [messages]);
 
@@ -167,7 +167,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const isTextareaDisabled = !isConnected || !isBotReady || isLoading || isBotSpeaking;
 
   return (
-    <Card className={`flex flex-col h-full ${className}`}>
+    <Card className={`flex flex-col h-[600px] ${className}`}>
       <CardHeader className="flex-shrink-0 pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -230,87 +230,89 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       <Separator />
 
       <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
-        {/* Messages */}
-        <ScrollArea className="flex-1 mb-4">
-          <div className="space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                {isConnected ? (
-                  isBotReady ? (
-                    <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p className="text-base font-medium">Start a conversation</p>
-                      <p className="text-sm mt-2">
-                        You can speak directly using the microphone or type messages below
-                      </p>
-                    </>
+        {/* Messages - Fixed height with scroll */}
+        <div className="flex-1 mb-4 min-h-0">
+          <ScrollArea className="h-full">
+            <div className="space-y-4 pr-4">
+              {messages.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  {isConnected ? (
+                    isBotReady ? (
+                      <>
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-base font-medium">Start a conversation</p>
+                        <p className="text-sm mt-2">
+                          You can speak directly using the microphone or type messages below
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                        <p>Assistant is connecting...</p>
+                      </>
+                    )
                   ) : (
                     <>
-                      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                      <p>Assistant is connecting...</p>
+                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-base font-medium">Connect to start chatting</p>
+                      <p className="text-sm mt-2">
+                        Use the Connect button to start your conversation
+                      </p>
                     </>
-                  )
-                ) : (
-                  <>
-                    <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-base font-medium">Connect to start chatting</p>
-                    <p className="text-sm mt-2">
-                      Use the Connect button to start your conversation
-                    </p>
-                  </>
-                )}
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${
-                    message.type === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  {message.type !== 'user' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                      {getMessageIcon(message.type)}
-                    </div>
-                  )}
-                  
-                  <div
-                    className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                      message.type === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : message.type === 'system'
-                        ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                        : 'bg-muted border'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium opacity-80">
-                        {getMessageTypeLabel(message.type)}
-                      </span>
-                      <span className="text-xs opacity-60">
-                        {formatTimestamp(message.timestamp)}
-                      </span>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                      {message.content}
-                    </p>
-                  </div>
-
-                  {message.type === 'user' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                      {getMessageIcon(message.type)}
-                    </div>
                   )}
                 </div>
-              ))
-            )}
-          </div>
-          <div ref={messagesEndRef} />
-        </ScrollArea>
+              ) : (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${
+                      message.type === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {message.type !== 'user' && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                        {getMessageIcon(message.type)}
+                      </div>
+                    )}
+                    
+                    <div
+                      className={`max-w-[75%] rounded-lg px-4 py-3 ${
+                        message.type === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : message.type === 'system'
+                          ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                          : 'bg-muted border'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium opacity-80">
+                          {getMessageTypeLabel(message.type)}
+                        </span>
+                        <span className="text-xs opacity-60">
+                          {formatTimestamp(message.timestamp)}
+                        </span>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                        {message.content}
+                      </p>
+                    </div>
+
+                    {message.type === 'user' && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                        {getMessageIcon(message.type)}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+        </div>
 
         {/* Input Area */}
         <Separator className="mb-4" />
-        <div className="space-y-3">
+        <div className="space-y-3 flex-shrink-0">
           <div className="flex gap-2">
             <Textarea
               placeholder={
@@ -331,7 +333,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 }
               }}
               disabled={isTextareaDisabled}
-              className={`flex-1 min-h-[80px] resize-none ${
+              className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
                 isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             />
