@@ -58,6 +58,23 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Auto-scroll to bottom with better reliability
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'end',
+          inline: 'nearest'
+        });
+      }
+    };
+
+    // Small delay to ensure DOM updates
+    const timeoutId = setTimeout(scrollToBottom, 100);
+    return () => clearTimeout(timeoutId);
+  }, [messages]);
+
   // Register function handlers when connected
   useEffect(() => {
     if (isConnected && isBotReady) {
