@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PipecatClient, RTVIEvent } from '@pipecat-ai/client-js';
-import { DailyTransport } from '@pipecat-ai/daily-transport';
+import { 
+  WebSocketTransport, 
+  ProtobufFrameSerializer,
+  TwilioSerializer 
+} from '@pipecat-ai/websocket-transport';
 
 interface BotMessage {
   id: string;
@@ -24,10 +28,18 @@ interface FunctionCallParams {
 
 type FunctionCallCallback = (fn: FunctionCallParams) => Promise<any | void>;
 
+interface WebSocketTransportOptions {
+  wsUrl?: string;
+  serializer?: 'protobuf' | 'twilio';
+  recorderSampleRate?: number;
+  playerSampleRate?: number;
+}
+
 interface UsePipecatClientOptions {
   enableMic?: boolean;
   enableCam?: boolean;
   enableScreenShare?: boolean;
+  transportOptions?: WebSocketTransportOptions;
 }
 
 interface UsePipecatClientReturn {
@@ -42,7 +54,7 @@ interface UsePipecatClientReturn {
   
   // Connection methods
   startBot: (endpoint: string, requestData?: any, headers?: any) => Promise<any>;
-  connect: (connectParams?: any) => Promise<any>;
+  connect: (connectParams?: { wsUrl: string }) => Promise<any>;
   startBotAndConnect: (endpoint: string, requestData?: any) => Promise<void>;
   disconnect: () => Promise<void>;
   disconnectBot: () => void;
@@ -79,6 +91,7 @@ interface UsePipecatClientReturn {
   
   // Utility methods
   clearMessages: () => void;
+  clearError: () => void;
 }
 
 export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipecatClientReturn => {
@@ -86,7 +99,15 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     enableMic: initialEnableMic = true,
     enableCam: initialEnableCam = false,
     enableScreenShare: initialEnableScreenShare = false,
+    transportOptions = {}
   } = options;
+
+  const {
+    serializer = 'protobuf',
+    recorderSampleRate = 16000,
+    playerSampleRate = 24000,
+    wsUrl: defaultWsUrl
+  } = transportOptions;
 
   const [client, setClient] = useState<PipecatClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -105,19 +126,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
   const [isCamEnabled, setIsCamEnabled] = useState(initialEnableCam);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Initialize audio element for bot playback
-  useEffect(() => {
-    audioRef.current = new Audio();
-    audioRef.current.autoplay = true;
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.src = '';
-        audioRef.current = null;
-      }
-    };
-  }, []);
+  // Refs for cleanup
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
 
   const addMessage = useCallback((message: Omit<BotMessage, 'id' | 'timestamp'>) => {
     const newMessage: BotMessage = {
@@ -128,158 +139,355 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     setMessages(prev => [...prev, newMessage]);
   }, []);
 
-  // Handle incoming audio from the bot
-  const handleBotAudio = useCallback((track: MediaStreamTrack, participant: any) => {
-    if (participant.local || track.kind !== "audio") return;
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
-    console.log('Bot audio track received');
-    if (audioRef.current) {
+  // Enhanced error handler
+  const handleError = useCallback((error: any, context?: string) => {
+    console.error(`Error ${context ? `in ${context}` : ''}:`, error);
+    
+    let errorMessage = 'An unexpected error occurred';
+    
+    if (error?.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error?.data?.message) {
+      errorMessage = error.data.message;
+    }
+
+    if (context) {
+      errorMessage = `${context}: ${errorMessage}`;
+    }
+
+    setError(errorMessage);
+    
+    addMessage({
+      type: 'system',
+      content: `Error: ${errorMessage}`,
+    });
+
+    // Auto-clear error after 10 seconds
+    setTimeout(() => {
+      setError(null);
+    }, 10000);
+  }, [addMessage]);
+
+  // Initialize WebSocket transport
+  const createTransport = useCallback(() => {
+    try {
+      const serializerInstance = serializer === 'twilio' 
+        ? new TwilioSerializer() 
+        : new ProtobufFrameSerializer();
+
+      return new WebSocketTransport({
+        wsUrl: defaultWsUrl,
+        serializer: serializerInstance,
+        recorderSampleRate,
+        playerSampleRate,
+      });
+    } catch (err) {
+      console.error('Failed to create WebSocket transport:', err);
+      throw new Error('Failed to initialize WebSocket transport');
+    }
+  }, [defaultWsUrl, serializer, recorderSampleRate, playerSampleRate]);
+
+  // Handle bot audio track
+  const handleBotAudio = useCallback((track: MediaStreamTrack, participant: any) => {
+    if (participant?.local || track.kind !== "audio") return;
+
+    console.log('Bot audio track received:', track);
+    
+    try {
+      // Create audio context if not exists
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+
+      const audioContext = audioContextRef.current;
+      
+      // Resume audio context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(console.error);
+      }
+
+      // Create audio element and play
       const audioElement = document.createElement("audio");
       audioElement.srcObject = new MediaStream([track]);
       audioElement.autoplay = true;
+      audioElement.playsInline = true;
+      
       audioElement.play().catch(console.error);
+
+      // Cleanup when track ends
+      track.addEventListener('ended', () => {
+        if (audioElement.srcObject) {
+          const stream = audioElement.srcObject as MediaStream;
+          stream.getTracks().forEach(t => t.stop());
+          audioElement.srcObject = null;
+        }
+      });
+
+    } catch (err) {
+      console.error('Error handling bot audio:', err);
     }
   }, []);
 
-  const initializeClient = useCallback(() => {
-    console.log('Initializing Pipecat client...');
-    
-    const newClient = new PipecatClient({
-      transport: new DailyTransport(),
-      enableMic: isMicEnabled,
-      enableCam: isCamEnabled,
-      enableScreenShare: initialEnableScreenShare,
-      callbacks: {
-        onConnected: () => {
-          console.log('Client connected');
-          setIsConnected(true);
-          setIsConnecting(false);
-          setError(null);
-          addMessage({
-            type: 'system',
-            content: 'Connected to voice assistant',
-          });
-        },
-        onDisconnected: () => {
-          console.log('Client disconnected');
-          setIsConnected(false);
-          setIsConnecting(false);
-          setIsBotReady(false);
-          setIsBotSpeaking(false);
-          setIsUserSpeaking(false);
-          addMessage({
-            type: 'system',
-            content: 'Disconnected from voice assistant',
-          });
-        },
-        onBotReady: (botReadyData: any) => {
-          console.log('Bot is ready', botReadyData);
-          setIsBotReady(true);
-          addMessage({
-            type: 'system',
-            content: 'Voice assistant is ready to chat',
-          });
-        },
-        onBotConnected: () => {
-          console.log('Bot connected');
-          addMessage({
-            type: 'system',
-            content: 'Voice assistant connected',
-          });
-        },
-        onBotDisconnected: () => {
-          console.log('Bot disconnected');
-          setIsBotReady(false);
-          setIsBotSpeaking(false);
-          addMessage({
-            type: 'system',
-            content: 'Voice assistant disconnected',
-          });
-        },
-        onServerMessage: (message: any) => {
-          console.log('Server message:', message);
-          if (message && message.content) {
-            addMessage({
-              type: 'bot',
-              content: message.content,
-            });
-          }
-        },
-        onUserTranscript: (data: any) => {
-          console.log('User transcript:', data);
-          if (data.text && data.text.trim() && data.final) {
-            addMessage({
-              type: 'user',
-              content: data.text.trim(),
-            });
-          }
-        },
-        onBotTranscript: (data: any) => {
-          console.log('Bot transcript:', data);
-          if (data.text && data.text.trim()) {
-            addMessage({
-              type: 'bot',
-              content: data.text.trim(),
-            });
-          }
-        },
-        onBotLlmText: (data: any) => {
-          console.log('Bot LLM text:', data);
-          if (data.text && data.text.trim()) {
-            addMessage({
-              type: 'bot',
-              content: data.text.trim(),
-            });
-          }
-        },
-        onBotStartedSpeaking: () => {
-          console.log('Bot started speaking');
-          setIsBotSpeaking(true);
-        },
-        onBotStoppedSpeaking: () => {
-          console.log('Bot stopped speaking');
-          setIsBotSpeaking(false);
-        },
-        onUserStartedSpeaking: () => {
-          console.log('User started speaking');
-          setIsUserSpeaking(true);
-        },
-        onUserStoppedSpeaking: () => {
-          console.log('User stopped speaking');
-          setIsUserSpeaking(false);
-        },
-        onError: (error: any) => {
-          console.error('Client error:', error);
-          setError(error.data?.message || error.message || 'An error occurred');
-          setIsConnecting(false);
-          addMessage({
-            type: 'system',
-            content: `Error: ${error.data?.message || error.message || 'Connection failed'}`,
-          });
-        },
-        onMessageError: (error: any) => {
-          console.error('Message error:', error);
-          setError(error.message || 'Message error occurred');
-          addMessage({
-            type: 'system',
-            content: `Message error: ${error.message || 'Failed to send message'}`,
-          });
-        },
-        onTransportStateChanged: (state: string) => {
-          console.log('Transport state changed:', state);
-          if (state === 'connected') {
-            setIsConnected(true);
-          } else if (state === 'disconnected' || state === 'failed') {
-            setIsConnected(false);
-            setIsBotReady(false);
-          }
-        },
-        onTrackStarted: handleBotAudio,
-      },
-    });
+  // Handle screen share track
+  const handleScreenTrack = useCallback((track: MediaStreamTrack, participant: any) => {
+    console.log('Screen share track received:', track);
+    // Handle screen share if needed
+  }, []);
 
-    return newClient;
-  }, [isMicEnabled, isCamEnabled, initialEnableScreenShare, addMessage, handleBotAudio]);
+  const initializeClient = useCallback(() => {
+    console.log('Initializing Pipecat client with WebSocket transport...');
+    
+    try {
+      const transport = createTransport();
+      
+      const newClient = new PipecatClient({
+        transport,
+        enableMic: isMicEnabled,
+        enableCam: isCamEnabled,
+        enableScreenShare: initialEnableScreenShare,
+        callbacks: {
+          onConnected: () => {
+            console.log('WebSocket client connected');
+            setIsConnected(true);
+            setIsConnecting(false);
+            setError(null);
+            addMessage({
+              type: 'system',
+              content: 'Connected to voice assistant via WebSocket',
+            });
+          },
+          
+          onDisconnected: () => {
+            console.log('WebSocket client disconnected');
+            setIsConnected(false);
+            setIsConnecting(false);
+            setIsBotReady(false);
+            setIsBotSpeaking(false);
+            setIsUserSpeaking(false);
+            addMessage({
+              type: 'system',
+              content: 'Disconnected from voice assistant',
+            });
+          },
+          
+          onTransportStateChanged: (state: string) => {
+            console.log('WebSocket transport state changed:', state);
+            
+            switch (state) {
+              case 'connecting':
+                setIsConnecting(true);
+                break;
+              case 'connected':
+                setIsConnected(true);
+                setIsConnecting(false);
+                break;
+              case 'disconnecting':
+                setIsConnecting(false);
+                break;
+              case 'disconnected':
+              case 'failed':
+                setIsConnected(false);
+                setIsConnecting(false);
+                setIsBotReady(false);
+                break;
+            }
+          },
+          
+          onBotReady: (botReadyData: any) => {
+            console.log('Bot is ready:', botReadyData);
+            setIsBotReady(true);
+            addMessage({
+              type: 'system',
+              content: `Voice assistant is ready (RTVI ${botReadyData?.version || 'unknown'})`,
+            });
+          },
+          
+          onBotConnected: () => {
+            console.log('Bot connected to WebSocket');
+            addMessage({
+              type: 'system',
+              content: 'Voice assistant connected',
+            });
+          },
+          
+          onBotDisconnected: (participant: any) => {
+            console.log('Bot disconnected from WebSocket');
+            setIsBotReady(false);
+            setIsBotSpeaking(false);
+            addMessage({
+              type: 'system',
+              content: 'Voice assistant disconnected',
+            });
+          },
+          
+          onServerMessage: (message: any) => {
+            console.log('Server message received:', message);
+            if (message?.content || message?.text) {
+              addMessage({
+                type: 'bot',
+                content: message.content || message.text,
+              });
+            }
+          },
+          
+          onUserTranscript: (data: any) => {
+            console.log('User transcript:', data);
+            if (data?.text && data.text.trim() && data.final) {
+              addMessage({
+                type: 'user',
+                content: data.text.trim(),
+              });
+            }
+          },
+          
+          onBotTranscript: (data: any) => {
+            console.log('Bot transcript:', data);
+            if (data?.text && data.text.trim()) {
+              addMessage({
+                type: 'bot',
+                content: data.text.trim(),
+              });
+            }
+          },
+          
+          onBotLlmText: (data: any) => {
+            console.log('Bot LLM text:', data);
+            if (data?.text && data.text.trim()) {
+              addMessage({
+                type: 'bot',
+                content: data.text.trim(),
+              });
+            }
+          },
+
+          onBotTtsText: (data: any) => {
+            console.log('Bot TTS text:', data);
+            if (data?.text && data.text.trim()) {
+              addMessage({
+                type: 'bot',
+                content: data.text.trim(),
+              });
+            }
+          },
+          
+          onBotStartedSpeaking: () => {
+            console.log('Bot started speaking');
+            setIsBotSpeaking(true);
+          },
+          
+          onBotStoppedSpeaking: () => {
+            console.log('Bot stopped speaking');
+            setIsBotSpeaking(false);
+          },
+          
+          onUserStartedSpeaking: () => {
+            console.log('User started speaking');
+            setIsUserSpeaking(true);
+          },
+          
+          onUserStoppedSpeaking: () => {
+            console.log('User stopped speaking');
+            setIsUserSpeaking(false);
+          },
+          
+          onError: (error: any) => {
+            console.error('RTVI client error:', error);
+            const isFatal = error?.data?.fatal || false;
+            const errorMsg = error?.data?.message || error?.message || 'Connection error occurred';
+            
+            handleError(errorMsg, 'Client Error');
+            
+            if (isFatal) {
+              setIsConnecting(false);
+              setIsConnected(false);
+              setIsBotReady(false);
+            }
+          },
+          
+          onMessageError: (error: any) => {
+            console.error('Message error:', error);
+            handleError(error?.message || 'Message processing failed', 'Message Error');
+          },
+          
+          onDeviceError: (deviceError: any) => {
+            console.error('Device error:', deviceError);
+            const devices = deviceError?.devices || [];
+            const errorType = deviceError?.type || 'unknown';
+            handleError(`Device error (${errorType}): ${devices.join(', ')}`, 'Device Error');
+          },
+          
+          onTrackStarted: handleBotAudio,
+          onScreenTrackStarted: handleScreenTrack,
+          
+          onTrackStopped: (track: MediaStreamTrack, participant: any) => {
+            console.log('Track stopped:', track.kind);
+          },
+          
+          onScreenTrackStopped: (track: MediaStreamTrack, participant: any) => {
+            console.log('Screen track stopped');
+          },
+
+          // Device update callbacks
+          onAvailableMicsUpdated: (mics: MediaDeviceInfo[]) => {
+            console.log('Available mics updated:', mics.length);
+          },
+          
+          onAvailableCamsUpdated: (cams: MediaDeviceInfo[]) => {
+            console.log('Available cams updated:', cams.length);
+          },
+          
+          onAvailableSpeakersUpdated: (speakers: MediaDeviceInfo[]) => {
+            console.log('Available speakers updated:', speakers.length);
+          },
+          
+          onMicUpdated: (mic: MediaDeviceInfo) => {
+            console.log('Mic updated:', mic.label);
+            setSelectedMic(mic);
+          },
+          
+          onCamUpdated: (cam: MediaDeviceInfo) => {
+            console.log('Cam updated:', cam.label);
+            setSelectedCam(cam);
+          },
+          
+          onSpeakerUpdated: (speaker: MediaDeviceInfo) => {
+            console.log('Speaker updated:', speaker.label);
+            setSelectedSpeaker(speaker);
+          },
+
+          // Audio level callbacks
+          onLocalAudioLevel: (level: number) => {
+            // Optional: handle local audio level
+          },
+          
+          onRemoteAudioLevel: (level: number, participant: any) => {
+            // Optional: handle remote audio level
+          },
+        },
+      });
+
+      return newClient;
+    } catch (err) {
+      console.error('Failed to initialize client:', err);
+      handleError(err, 'Client Initialization');
+      throw err;
+    }
+  }, [
+    createTransport, 
+    isMicEnabled, 
+    isCamEnabled, 
+    initialEnableScreenShare, 
+    addMessage, 
+    handleError, 
+    handleBotAudio, 
+    handleScreenTrack
+  ]);
 
   // Connection methods
   const startBot = useCallback(async (endpoint: string, requestData?: any, headers?: any) => {
@@ -289,41 +497,57 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       setError(null);
+      console.log('Starting bot with endpoint:', endpoint);
+      
       const result = await client.startBot({
         endpoint,
-        requestData,
+        requestData: requestData || {
+          initial_prompt: "You are a helpful voice assistant.",
+          llm_provider: "openai"
+        },
         headers,
+        timeout: 10000, // 10 second timeout
       });
-      console.log('Bot started:', result);
+      
+      console.log('Bot started successfully:', result);
       return result;
     } catch (err: any) {
       console.error('Failed to start bot:', err);
-      setError(err.message || 'Failed to start bot');
+      handleError(err, 'Start Bot');
       throw err;
     }
-  }, [client]);
+  }, [client, handleError]);
 
-  const connect = useCallback(async (connectParams?: any) => {
+  const connect = useCallback(async (connectParams?: { wsUrl: string }) => {
     if (!client) {
       throw new Error('Client not initialized');
+    }
+
+    if (!connectParams?.wsUrl) {
+      throw new Error('WebSocket URL is required for connection');
     }
 
     try {
       setIsConnecting(true);
       setError(null);
-      const result = await client.connect(connectParams);
-      console.log('Connected:', result);
+      console.log('Connecting to WebSocket:', connectParams.wsUrl);
+      
+      const result = await client.connect({
+        wsUrl: connectParams.wsUrl
+      });
+      
+      console.log('Connected successfully:', result);
       return result;
     } catch (err: any) {
       console.error('Failed to connect:', err);
-      setError(err.message || 'Failed to connect');
+      handleError(err, 'Connect');
       setIsConnecting(false);
       throw err;
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const startBotAndConnect = useCallback(async (endpoint: string, requestData?: any) => {
-    console.log('Connecting to bot...', { endpoint, requestData });
+    console.log('Starting bot and connecting...', { endpoint, requestData });
     
     try {
       setIsConnecting(true);
@@ -331,14 +555,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
       // Clean up existing client
       if (client) {
-        await client.disconnect();
+        await client.disconnect().catch(console.error);
       }
 
       const newClient = initializeClient();
       setClient(newClient);
 
-      // Start bot and connect
-      await newClient.startBotAndConnect({
+      // Start bot and connect in one call
+      const result = await newClient.startBotAndConnect({
         endpoint,
         requestData: requestData || {
           initial_prompt: "You are a helpful voice assistant.",
@@ -346,16 +570,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
         }
       });
 
+      console.log('Bot started and connected successfully:', result);
+      
     } catch (err: any) {
-      console.error('Failed to connect to bot:', err);
-      setError(err.message || 'Failed to connect to bot');
+      console.error('Failed to start bot and connect:', err);
+      handleError(err, 'Start Bot And Connect');
       setIsConnecting(false);
-      addMessage({
-        type: 'system',
-        content: `Connection failed: ${err.message || 'Unknown error'}`,
-      });
     }
-  }, [client, initializeClient, addMessage]);
+  }, [client, initializeClient, handleError]);
 
   const disconnect = useCallback(async () => {
     console.log('Disconnecting from bot...');
@@ -364,7 +586,17 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       try {
         await client.disconnect();
       } catch (err) {
-        console.error('Error disconnecting:', err);
+        console.error('Error during disconnect:', err);
+      }
+    }
+
+    // Clean up audio context
+    if (audioContextRef.current) {
+      try {
+        await audioContextRef.current.close();
+        audioContextRef.current = null;
+      } catch (err) {
+        console.error('Error closing audio context:', err);
       }
     }
 
@@ -388,15 +620,15 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Bot disconnected');
     } catch (err: any) {
       console.error('Failed to disconnect bot:', err);
-      setError(err.message || 'Failed to disconnect bot');
+      handleError(err, 'Disconnect Bot');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   // Messaging methods
   const sendMessage = useCallback((msgType: string, data?: any) => {
     if (!client || !isConnected) {
       console.warn('Cannot send message: client not connected');
-      setError('Not connected to bot');
+      handleError('Not connected to bot', 'Send Message');
       return;
     }
 
@@ -405,55 +637,54 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Message sent:', msgType, data);
     } catch (err: any) {
       console.error('Failed to send message:', err);
-      setError(err.message || 'Failed to send message');
+      handleError(err, 'Send Message');
     }
-  }, [client, isConnected]);
+  }, [client, isConnected, handleError]);
 
   const sendRequest = useCallback(async (msgType: string, data?: any, timeout?: number): Promise<any> => {
     if (!client || !isConnected) {
-      console.warn('Cannot send request: client not connected');
-      setError('Not connected to bot');
-      throw new Error('Not connected to bot');
+      const error = new Error('Not connected to bot');
+      handleError(error, 'Send Request');
+      throw error;
     }
 
     try {
-      const response = await client.sendClientRequest(msgType, data, timeout);
-      console.log('Request sent:', msgType, data, 'Response:', response);
+      const response = await client.sendClientRequest(msgType, data, timeout || 10000);
+      console.log('Request sent and response received:', msgType, data, 'Response:', response);
       return response;
     } catch (err: any) {
       console.error('Failed to send request:', err);
-      setError(err.message || 'Failed to send request');
+      handleError(err, 'Send Request');
       throw err;
     }
-  }, [client, isConnected]);
+  }, [client, isConnected, handleError]);
 
   const appendToContext = useCallback(async (context: LLMContextMessage): Promise<boolean> => {
     if (!client || !isConnected) {
       console.warn('Cannot append to context: client not connected');
-      setError('Not connected to bot');
+      handleError('Not connected to bot', 'Append Context');
       return false;
     }
 
     try {
-      // Use the client's appendToContext method if available
       if (client.appendToContext) {
         await client.appendToContext(context);
         console.log('Context appended:', context);
         return true;
       } else {
-        // Fallback: send as a context message if appendToContext is not available
+        // Fallback: send as a message
         client.sendClientMessage('context', { context });
         console.log('Context sent as message:', context);
         return true;
       }
     } catch (err: any) {
       console.error('Failed to append context:', err);
-      setError(err.message || 'Failed to append context');
+      handleError(err, 'Append Context');
       return false;
     }
-  }, [client, isConnected]);
+  }, [client, isConnected, handleError]);
 
-  // Device methods
+  // Device methods with enhanced error handling
   const initDevices = useCallback(async () => {
     if (!client) {
       throw new Error('Client not initialized');
@@ -464,10 +695,10 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Devices initialized');
     } catch (err: any) {
       console.error('Failed to initialize devices:', err);
-      setError(err.message || 'Failed to initialize devices');
+      handleError(err, 'Initialize Devices');
       throw err;
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const getAllMics = useCallback(async (): Promise<MediaDeviceInfo[]> => {
     if (!client) {
@@ -476,13 +707,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       const mics = await client.getAllMics();
-      console.log('Available microphones:', mics);
+      console.log('Available microphones:', mics.length);
       return mics;
     } catch (err: any) {
       console.error('Failed to get microphones:', err);
+      handleError(err, 'Get Microphones');
       return [];
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const getAllCams = useCallback(async (): Promise<MediaDeviceInfo[]> => {
     if (!client) {
@@ -491,13 +723,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       const cams = await client.getAllCams();
-      console.log('Available cameras:', cams);
+      console.log('Available cameras:', cams.length);
       return cams;
     } catch (err: any) {
       console.error('Failed to get cameras:', err);
+      handleError(err, 'Get Cameras');
       return [];
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const getAllSpeakers = useCallback(async (): Promise<MediaDeviceInfo[]> => {
     if (!client) {
@@ -506,13 +739,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       const speakers = await client.getAllSpeakers();
-      console.log('Available speakers:', speakers);
+      console.log('Available speakers:', speakers.length);
       return speakers;
     } catch (err: any) {
       console.error('Failed to get speakers:', err);
+      handleError(err, 'Get Speakers');
       return [];
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const updateMic = useCallback((micId: string) => {
     if (!client) {
@@ -522,13 +756,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       client.updateMic(micId);
-      setSelectedMic(client.selectedMic as MediaDeviceInfo || null);
+      const updatedMic = (client as any).selectedMic;
+      setSelectedMic(updatedMic || null);
       console.log('Microphone updated:', micId);
     } catch (err: any) {
       console.error('Failed to update microphone:', err);
-      setError(err.message || 'Failed to update microphone');
+      handleError(err, 'Update Microphone');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const updateCam = useCallback((camId: string) => {
     if (!client) {
@@ -538,13 +773,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       client.updateCam(camId);
-      setSelectedCam(client.selectedCam as MediaDeviceInfo || null);
+      const updatedCam = (client as any).selectedCam;
+      setSelectedCam(updatedCam || null);
       console.log('Camera updated:', camId);
     } catch (err: any) {
       console.error('Failed to update camera:', err);
-      setError(err.message || 'Failed to update camera');
+      handleError(err, 'Update Camera');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const updateSpeaker = useCallback((speakerId: string) => {
     if (!client) {
@@ -554,13 +790,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
     try {
       client.updateSpeaker(speakerId);
-      setSelectedSpeaker(client.selectedSpeaker as MediaDeviceInfo || null);
+      const updatedSpeaker = (client as any).selectedSpeaker;
+      setSelectedSpeaker(updatedSpeaker || null);
       console.log('Speaker updated:', speakerId);
     } catch (err: any) {
       console.error('Failed to update speaker:', err);
-      setError(err.message || 'Failed to update speaker');
+      handleError(err, 'Update Speaker');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const enableMic = useCallback((enable: boolean) => {
     if (!client) {
@@ -574,9 +811,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Microphone', enable ? 'enabled' : 'disabled');
     } catch (err: any) {
       console.error('Failed to enable/disable microphone:', err);
-      setError(err.message || 'Failed to enable/disable microphone');
+      handleError(err, `${enable ? 'Enable' : 'Disable'} Microphone`);
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const enableCam = useCallback((enable: boolean) => {
     if (!client) {
@@ -590,9 +827,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Camera', enable ? 'enabled' : 'disabled');
     } catch (err: any) {
       console.error('Failed to enable/disable camera:', err);
-      setError(err.message || 'Failed to enable/disable camera');
+      handleError(err, `${enable ? 'Enable' : 'Disable'} Camera`);
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const enableScreenShare = useCallback((enable: boolean) => {
     if (!client) {
@@ -606,9 +843,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Screen share', enable ? 'enabled' : 'disabled');
     } catch (err: any) {
       console.error('Failed to enable/disable screen share:', err);
-      setError(err.message || 'Failed to enable/disable screen share');
+      handleError(err, `${enable ? 'Enable' : 'Disable'} Screen Share`);
     }
-  }, [client]);
+  }, [client, handleError]);
 
   // Advanced methods
   const tracks = useCallback(() => {
@@ -620,9 +857,10 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       return client.tracks();
     } catch (err: any) {
       console.error('Failed to get tracks:', err);
+      handleError(err, 'Get Tracks');
       return null;
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const registerFunctionCallHandler = useCallback((functionName: string, callback: FunctionCallCallback) => {
     if (!client) {
@@ -635,9 +873,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Function call handler registered:', functionName);
     } catch (err: any) {
       console.error('Failed to register function call handler:', err);
-      setError(err.message || 'Failed to register function call handler');
+      handleError(err, 'Register Function Handler');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const setLogLevel = useCallback((level: number) => {
     if (!client) {
@@ -650,8 +888,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.log('Log level set to:', level);
     } catch (err: any) {
       console.error('Failed to set log level:', err);
+      handleError(err, 'Set Log Level');
     }
-  }, [client]);
+  }, [client, handleError]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -659,14 +898,15 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
   // Update device states when client changes
   useEffect(() => {
-    if (client) {
+    if (client && isConnected) {
       try {
-        setSelectedMic(client.selectedMic as MediaDeviceInfo || null);
-        setSelectedCam(client.selectedCam as MediaDeviceInfo || null);
-        setSelectedSpeaker(client.selectedSpeaker as MediaDeviceInfo || null);
-        setIsMicEnabled(client.isMicEnabled || false);
-        setIsCamEnabled(client.isCamEnabled || false);
-        setIsSharingScreen(client.isSharingScreen || false);
+        const clientAny = client as any;
+        setSelectedMic(clientAny.selectedMic || null);
+        setSelectedCam(clientAny.selectedCam || null);
+        setSelectedSpeaker(clientAny.selectedSpeaker || null);
+        setIsMicEnabled(clientAny.isMicEnabled || false);
+        setIsCamEnabled(clientAny.isCamEnabled || false);
+        setIsSharingScreen(clientAny.isSharingScreen || false);
       } catch (err) {
         console.log('Client device properties not yet available');
       }
@@ -679,8 +919,8 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       if (client) {
         client.disconnect().catch(console.error);
       }
-      if (audioRef.current) {
-        audioRef.current.src = '';
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(console.error);
       }
     };
   }, [client]);
@@ -734,5 +974,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     
     // Utility methods
     clearMessages,
+    clearError,
   };
 };
