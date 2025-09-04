@@ -3,22 +3,12 @@
 import FormArea from "@/components/FormArea";
 import ChatBox from "@/components/ChatBox";
 import { usePipecatClient } from "@/hooks/usePipecatClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Phone, PhoneOff, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { useState } from "react";
 
 export default function Page() {
-  const [endpoint, setEndpoint] = useState("https://manjujayamurali--pipecat-websocket-bot-create-server.modal.run");
-  const [initialPrompt, setInitialPrompt] = useState("You are a helpful voice assistant.");
-  const [showConnectionDialog, setShowConnectionDialog] = useState(false);
-
   const pipecatClient = usePipecatClient({
     enableMic: true,
     enableCam: false,
@@ -30,22 +20,15 @@ export default function Page() {
     isConnecting,
     isBotReady,
     error,
-    connectToBot,
+    startBotAndConnect,
     disconnect,
   } = pipecatClient;
 
   const handleConnect = async () => {
-    if (!endpoint.trim()) {
-      toast.error("Please enter an endpoint URL");
-      return;
-    }
-
     try {
-      await connectToBot(endpoint.trim(), {
-        initial_prompt: initialPrompt.trim() || "You are a helpful voice assistant.",
-        llm_provider: "openai"
-      });
-      setShowConnectionDialog(false);
+      // Use the /connect endpoint - this will call your backend's /connect route
+      // which returns the WebSocket URL, then connect to it
+      await startBotAndConnect("https://manjujayamurali--pipecat-websocket-bot-create-server.modal.run/connect");
       toast.success("Connecting to voice assistant...");
     } catch (err: any) {
       toast.error(err.message || "Failed to connect");
@@ -104,77 +87,25 @@ export default function Page() {
                 </Button>
               </div>
             ) : (
-              <Dialog open={showConnectionDialog} onOpenChange={setShowConnectionDialog}>
-                <DialogTrigger asChild>
-                  <Button 
-                    variant="default" 
-                    size="sm"
-                    className="gap-2"
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <Phone className="w-4 h-4" />
-                        Connect
-                      </>
-                    )}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Connect to Pipecat Server</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="endpoint">Server Endpoint</Label>
-                      <Input
-                        id="endpoint"
-                        type="text"
-                        placeholder="/api/pipecat/start"
-                        value={endpoint}
-                        onChange={(e) => setEndpoint(e.target.value)}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="initialPrompt">Initial Prompt</Label>
-                      <Textarea
-                        id="initialPrompt"
-                        placeholder="You are a helpful voice assistant."
-                        value={initialPrompt}
-                        onChange={(e) => setInitialPrompt(e.target.value)}
-                        className="min-h-[80px]"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        This prompt will initialize the bot's behavior for both form and chat
-                      </p>
-                    </div>
-                    
-                    <Button 
-                      onClick={handleConnect} 
-                      disabled={isConnecting || !endpoint.trim()}
-                      className="w-full gap-2"
-                    >
-                      {isConnecting ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        <>
-                          <Phone className="w-4 h-4" />
-                          Connect to Assistant
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <Button 
+                variant="default" 
+                size="sm"
+                className="gap-2"
+                disabled={isConnecting}
+                onClick={handleConnect}
+              >
+                {isConnecting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Phone className="w-4 h-4" />
+                    Connect
+                  </>
+                )}
+              </Button>
             )}
           </div>
 
