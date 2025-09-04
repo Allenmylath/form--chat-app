@@ -29,7 +29,6 @@ interface FunctionCallParams {
 type FunctionCallCallback = (fn: FunctionCallParams) => Promise<any | void>;
 
 interface WebSocketTransportOptions {
-  wsUrl?: string;
   serializer?: 'protobuf' | 'twilio';
   recorderSampleRate?: number;
   playerSampleRate?: number;
@@ -106,7 +105,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     serializer = 'protobuf',
     recorderSampleRate = 16000,
     playerSampleRate = 24000,
-    wsUrl: defaultWsUrl
   } = transportOptions;
 
   const [client, setClient] = useState<PipecatClient | null>(null);
@@ -128,7 +126,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
 
   // Refs for cleanup
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
 
   const addMessage = useCallback((message: Omit<BotMessage, 'id' | 'timestamp'>) => {
     const newMessage: BotMessage = {
@@ -174,15 +171,15 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }, 10000);
   }, [addMessage]);
 
-  // Initialize WebSocket transport
-  const createTransport = useCallback(() => {
+  // Create WebSocket transport with dynamic wsUrl
+  const createTransport = useCallback((wsUrl?: string) => {
     try {
       const serializerInstance = serializer === 'twilio' 
         ? new TwilioSerializer() 
         : new ProtobufFrameSerializer();
 
       return new WebSocketTransport({
-        wsUrl: defaultWsUrl,
+        wsUrl, // This will be set when we have the actual URL
         serializer: serializerInstance,
         recorderSampleRate,
         playerSampleRate,
@@ -191,7 +188,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       console.error('Failed to create WebSocket transport:', err);
       throw new Error('Failed to initialize WebSocket transport');
     }
-  }, [defaultWsUrl, serializer, recorderSampleRate, playerSampleRate]);
+  }, [serializer, recorderSampleRate, playerSampleRate]);
 
   // Handle bot audio track
   const handleBotAudio = useCallback((track: MediaStreamTrack, participant: any) => {
@@ -237,14 +234,13 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
   // Handle screen share track
   const handleScreenTrack = useCallback((track: MediaStreamTrack, participant: any) => {
     console.log('Screen share track received:', track);
-    // Handle screen share if needed
   }, []);
 
-  const initializeClient = useCallback(() => {
+  const initializeClient = useCallback((wsUrl?: string) => {
     console.log('Initializing Pipecat client with WebSocket transport...');
     
     try {
-      const transport = createTransport();
+      const transport = createTransport(wsUrl);
       
       const newClient = new PipecatClient({
         transport,
@@ -324,16 +320,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
               type: 'system',
               content: 'Voice assistant disconnected',
             });
-          },
-          
-          onServerMessage: (message: any) => {
-            console.log('Server message received:', message);
-            if (message?.content || message?.text) {
-              addMessage({
-                type: 'bot',
-                content: message.content || message.text,
-              });
-            }
           },
           
           onUserTranscript: (data: any) => {
@@ -434,18 +420,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
           },
 
           // Device update callbacks
-          onAvailableMicsUpdated: (mics: MediaDeviceInfo[]) => {
-            console.log('Available mics updated:', mics.length);
-          },
-          
-          onAvailableCamsUpdated: (cams: MediaDeviceInfo[]) => {
-            console.log('Available cams updated:', cams.length);
-          },
-          
-          onAvailableSpeakersUpdated: (speakers: MediaDeviceInfo[]) => {
-            console.log('Available speakers updated:', speakers.length);
-          },
-          
           onMicUpdated: (mic: MediaDeviceInfo) => {
             console.log('Mic updated:', mic.label);
             setSelectedMic(mic);
@@ -459,15 +433,6 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
           onSpeakerUpdated: (speaker: MediaDeviceInfo) => {
             console.log('Speaker updated:', speaker.label);
             setSelectedSpeaker(speaker);
-          },
-
-          // Audio level callbacks
-          onLocalAudioLevel: (level: number) => {
-            // Optional: handle local audio level
-          },
-          
-          onRemoteAudioLevel: (level: number, participant: any) => {
-            // Optional: handle remote audio level
           },
         },
       });
@@ -501,12 +466,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       
       const result = await client.startBot({
         endpoint,
-        requestData: requestData || {
-          initial_prompt: "You are a helpful voice assistant.",
-          llm_provider: "openai"
-        },
+        requestData,
         headers,
-        timeout: 10000, // 10 second timeout
+        timeout: 10000,
       });
       
       console.log('Bot started successfully:', result);
@@ -532,9 +494,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       setError(null);
       console.log('Connecting to WebSocket:', connectParams.wsUrl);
       
-      const result = await client.connect({
-        wsUrl: connectParams.wsUrl
-      });
+      const result = await client.connect(connectParams);
       
       console.log('Connected successfully:', result);
       return result;
@@ -546,6 +506,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, handleError]);
 
+  // This is the key method that follows the documentation pattern
   const startBotAndConnect = useCallback(async (endpoint: string, requestData?: any) => {
     console.log('Starting bot and connecting...', { endpoint, requestData });
     
@@ -558,16 +519,14 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
         await client.disconnect().catch(console.error);
       }
 
+      // Initialize new client (without wsUrl yet)
       const newClient = initializeClient();
       setClient(newClient);
 
-      // Start bot and connect in one call
+      // Use startBotAndConnect which calls the endpoint and gets wsUrl back
       const result = await newClient.startBotAndConnect({
-        endpoint,
-        requestData: requestData || {
-          initial_prompt: "You are a helpful voice assistant.",
-          llm_provider: "openai"
-        }
+        endpoint, // This should be your /connect endpoint
+        requestData: requestData || {}
       });
 
       console.log('Bot started and connected successfully:', result);
