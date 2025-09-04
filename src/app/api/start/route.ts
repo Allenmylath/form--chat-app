@@ -20,11 +20,7 @@ export async function POST(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          initial_prompt: initial_prompt || 'You are a helpful assistant for forms and chat',
-          user_id: user_id || `user-${Date.now()}`,
-          ...otherData,
-        }),
+        body: JSON.stringify({ }),
       });
 
       if (!response.ok) {
