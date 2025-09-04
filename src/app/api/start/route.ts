@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     console.log('Starting bot with data:', { initial_prompt, user_id, otherData });
     
     // Call your Modal Pipecat server's /connect endpoint
-    const pipecatServerUrl = 'https://manjujayamurali--pipecat-websocket-bot-create-server.modal.run';
+    const pipecatServerUrl = 'https://manjujayamurali--pipecat-websocket-bot-fastapi-app.modal.run';
     
     try {
       // Call your Pipecat server to get the WebSocket URL
