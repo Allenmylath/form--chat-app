@@ -925,3 +925,5 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     // Utility methods
     clearMessages,
     clearError,
+  };
+};
