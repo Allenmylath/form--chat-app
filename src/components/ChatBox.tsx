@@ -41,6 +41,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     messages,
     error,
     sendMessage,
+    appendToContext,
     clearMessages,
     
     // Device methods and state
@@ -71,20 +72,30 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       // Set log level for debugging
       setLogLevel(3); // INFO level
     }
-  }, [isConnected, isBotReady]);
+  }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel]);
 
   const handleSendMessage = async () => {
-    if (!input.trim() || !isConnected || isBotSpeaking) return;
+    if (!input.trim() || !isConnected || !isBotReady || isBotSpeaking) return;
 
-    const message = input.trim();
+    const messageContent = input.trim();
     setInput('');
     setIsLoading(true);
 
     try {
-      sendMessage('user_message', { content: message });
+      // Send the message to the bot context
+      await appendToContext({
+        role: 'user',
+        content: messageContent,
+        run_immediately: true
+      });
+
       toast.success('Message sent');
     } catch (err: any) {
+      console.error('Failed to send message:', err);
       toast.error(err.message || 'Failed to send message');
+      
+      // Restore the input if sending failed
+      setInput(messageContent);
     } finally {
       setIsLoading(false);
     }
@@ -95,8 +106,22 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       toast.error('Please connect to bot first');
       return;
     }
-    enableMic(!isMicEnabled);
-    toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
+    
+    try {
+      enableMic(!isMicEnabled);
+      toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
+    } catch (err: any) {
+      toast.error('Failed to toggle microphone');
+    }
+  };
+
+  const handleClearMessages = () => {
+    try {
+      clearMessages();
+      toast.success('Chat cleared');
+    } catch (err: any) {
+      toast.error('Failed to clear messages');
+    }
   };
 
   const formatTimestamp = (timestamp: Date) => {
@@ -109,6 +134,15 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       case 'user': return '👤';
       case 'system': return '⚙️';
       default: return '💬';
+    }
+  };
+
+  const getMessageTypeLabel = (type: BotMessage['type']) => {
+    switch (type) {
+      case 'bot': return 'Assistant';
+      case 'user': return 'You';
+      case 'system': return 'System';
+      default: return 'Message';
     }
   };
 
@@ -125,7 +159,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           </CardTitle>
           
           <div className="flex items-center gap-2">
-            {/* Mic Toggle - Always visible now */}
+            {/* Mic Toggle */}
             <Button
               variant={isMicEnabled ? "default" : "outline"}
               size="sm"
@@ -139,16 +173,39 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
             {/* Status Indicators */}
             <div className="flex items-center gap-1">
-              {isBotSpeaking && <Badge variant="secondary" className="text-blue-600">🗣️ Bot Speaking</Badge>}
-              {isUserSpeaking && <Badge variant="secondary" className="text-green-600">🎤 You Speaking</Badge>}
-              {!isConnected && <Badge variant="outline" className="text-muted-foreground">⚡ Ready to Connect</Badge>}
+              {isBotSpeaking && (
+                <Badge variant="secondary" className="text-blue-600 animate-pulse">
+                  🗣️ Bot Speaking
+                </Badge>
+              )}
+              {isUserSpeaking && (
+                <Badge variant="secondary" className="text-green-600 animate-pulse">
+                  🎤 Listening
+                </Badge>
+              )}
+              {isConnected && isBotReady && (
+                <Badge variant="default" className="text-green-600">
+                  ✅ Ready
+                </Badge>
+              )}
+              {isConnected && !isBotReady && (
+                <Badge variant="outline" className="text-amber-600">
+                  ⏳ Connecting
+                </Badge>
+              )}
+              {!isConnected && (
+                <Badge variant="outline" className="text-muted-foreground">
+                  ⚡ Disconnected
+                </Badge>
+              )}
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            Error: {error}
+          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+            <div className="font-medium">Error:</div>
+            <div className="mt-1">{error}</div>
           </div>
         )}
       </CardHeader>
@@ -158,24 +215,31 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
         {/* Messages */}
         <ScrollArea className="flex-1 mb-4">
-          <div className="space-y-3">
+          <div className="space-y-4">
             {messages.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 {isConnected ? (
                   isBotReady ? (
                     <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>Start a conversation with your voice assistant</p>
-                      <p className="text-xs mt-1">You can speak directly or type messages below</p>
+                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-base font-medium">Start a conversation</p>
+                      <p className="text-sm mt-2">
+                        You can speak directly using the microphone or type messages below
+                      </p>
                     </>
                   ) : (
-                    <p>Waiting for assistant to be ready...</p>
+                    <>
+                      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p>Assistant is connecting...</p>
+                    </>
                   )
                 ) : (
                   <>
-                    <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p>Connect to start chatting with your assistant</p>
-                    <p className="text-xs mt-1">Use the Connect button in the top-right corner</p>
+                    <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-base font-medium">Connect to start chatting</p>
+                    <p className="text-sm mt-2">
+                      Use the Connect button to start your conversation
+                    </p>
                   </>
                 )}
               </div>
@@ -187,23 +251,39 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                     message.type === 'user' ? 'justify-end' : 'justify-start'
                   }`}
                 >
+                  {message.type !== 'user' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                      {getMessageIcon(message.type)}
+                    </div>
+                  )}
+                  
                   <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                    className={`max-w-[75%] rounded-lg px-4 py-3 ${
                       message.type === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : message.type === 'system'
-                        ? 'bg-muted text-muted-foreground text-xs'
-                        : 'bg-muted'
+                        ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                        : 'bg-muted border'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span>{getMessageIcon(message.type)}</span>
-                      <span className="text-xs opacity-70">
+                      <span className="text-xs font-medium opacity-80">
+                        {getMessageTypeLabel(message.type)}
+                      </span>
+                      <span className="text-xs opacity-60">
                         {formatTimestamp(message.timestamp)}
                       </span>
                     </div>
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                      {message.content}
+                    </p>
                   </div>
+
+                  {message.type === 'user' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                      {getMessageIcon(message.type)}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -211,19 +291,19 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           <div ref={messagesEndRef} />
         </ScrollArea>
 
-        {/* Input Area - Always visible now */}
+        {/* Input Area */}
         <Separator className="mb-4" />
         <div className="space-y-3">
           <div className="flex gap-2">
             <Textarea
               placeholder={
                 !isConnected
-                  ? "Connect to bot to start typing..." 
+                  ? "Connect to start typing..." 
+                  : !isBotReady
+                  ? "Waiting for assistant to be ready..."
                   : isBotSpeaking 
                   ? "Bot is speaking... please wait" 
-                  : isBotReady 
-                  ? "Type your message here..." 
-                  : "Waiting for assistant..."
+                  : "Type your message here..."
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -234,35 +314,43 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 }
               }}
               disabled={isTextareaDisabled}
-              className={`flex-1 min-h-[100px] resize-none ${
+              className={`flex-1 min-h-[80px] resize-none ${
                 isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             />
             
             <Button
               onClick={handleSendMessage}
-              disabled={!input.trim() || isTextareaDisabled}
+              disabled={!input.trim() || isTextareaDisabled || isLoading}
               size="sm"
               className="gap-2 h-fit self-end"
             >
-              <CornerDownLeft className="w-4 h-4" />
-              Enter
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <CornerDownLeft className="w-4 h-4" />
+              )}
+              {isLoading ? 'Sending...' : 'Send'}
             </Button>
           </div>
 
-          <div className="flex justify-between items-center">
-            <div className="text-xs text-muted-foreground">
+          <div className="flex justify-between items-center text-xs">
+            <div className="text-muted-foreground">
               {!isConnected ? (
-                <span className="text-blue-600">🔌 Connect to bot to enable all features</span>
+                <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
+              ) : !isBotReady ? (
+                <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
               ) : isBotSpeaking ? (
-                <span className="text-amber-600">⚠️ Typing disabled while bot is speaking</span>
+                <span className="text-amber-600 font-medium">⚠️ Please wait for assistant to finish</span>
+              ) : isUserSpeaking ? (
+                <span className="text-green-600 font-medium">🎤 Voice input detected</span>
               ) : (
                 <span>💬 Press Enter to send • Shift + Enter for new line</span>
               )}
             </div>
 
             <Button
-              onClick={clearMessages}
+              onClick={handleClearMessages}
               disabled={messages.length === 0}
               variant="outline"
               size="sm"
