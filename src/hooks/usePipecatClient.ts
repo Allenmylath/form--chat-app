@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PipecatClient, RTVIEvent } from '@pipecat-ai/client-js';
+import { PipecatClient } from '@pipecat-ai/client-js';
 import { 
   WebSocketTransport, 
   ProtobufFrameSerializer,
@@ -171,18 +171,19 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }, 10000);
   }, [addMessage]);
 
-  // Create WebSocket transport with dynamic wsUrl
-  const createTransport = useCallback((wsUrl?: string) => {
+  // Create WebSocket transport - NO wsUrl for startBotAndConnect pattern
+  const createTransport = useCallback(() => {
     try {
       const serializerInstance = serializer === 'twilio' 
         ? new TwilioSerializer() 
         : new ProtobufFrameSerializer();
 
+      // FIXED: Don't pass wsUrl - it will be set by startBotAndConnect
       return new WebSocketTransport({
-        wsUrl, // This will be set when we have the actual URL
         serializer: serializerInstance,
         recorderSampleRate,
         playerSampleRate,
+        // NO wsUrl here!
       });
     } catch (err) {
       console.error('Failed to create WebSocket transport:', err);
@@ -231,16 +232,12 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, []);
 
-  // Handle screen share track
-  const handleScreenTrack = useCallback((track: MediaStreamTrack, participant: any) => {
-    console.log('Screen share track received:', track);
-  }, []);
-
-  const initializeClient = useCallback((wsUrl?: string) => {
+  // FIXED: Remove wsUrl parameter - not needed for startBotAndConnect pattern
+  const initializeClient = useCallback(() => {
     console.log('Initializing Pipecat client with WebSocket transport...');
     
     try {
-      const transport = createTransport(wsUrl);
+      const transport = createTransport(); // No wsUrl passed
       
       const newClient = new PipecatClient({
         transport,
@@ -409,16 +406,11 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
           },
           
           onTrackStarted: handleBotAudio,
-          onScreenTrackStarted: handleScreenTrack,
           
           onTrackStopped: (track: MediaStreamTrack, participant: any) => {
             console.log('Track stopped:', track.kind);
           },
           
-          onScreenTrackStopped: (track: MediaStreamTrack, participant: any) => {
-            console.log('Screen track stopped');
-          },
-
           // Device update callbacks
           onMicUpdated: (mic: MediaDeviceInfo) => {
             console.log('Mic updated:', mic.label);
@@ -450,8 +442,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     initialEnableScreenShare, 
     addMessage, 
     handleError, 
-    handleBotAudio, 
-    handleScreenTrack
+    handleBotAudio
   ]);
 
   // Connection methods
@@ -506,7 +497,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, handleError]);
 
-  // This is the key method that follows the documentation pattern
+  // CORRECTED: This is the method that follows the documentation exactly
   const startBotAndConnect = useCallback(async (endpoint: string, requestData?: any) => {
     console.log('Starting bot and connecting...', { endpoint, requestData });
     
@@ -519,13 +510,13 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
         await client.disconnect().catch(console.error);
       }
 
-      // Initialize new client (without wsUrl yet)
+      // Initialize new client with empty transport (no wsUrl)
       const newClient = initializeClient();
       setClient(newClient);
 
-      // Use startBotAndConnect which calls the endpoint and gets wsUrl back
+      // This is the key method from the docs - it handles everything internally
       const result = await newClient.startBotAndConnect({
-        endpoint, // This should be your /connect endpoint
+        endpoint, // Your /api/start endpoint
         requestData: requestData || {}
       });
 
@@ -536,7 +527,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       handleError(err, 'Start Bot And Connect');
       setIsConnecting(false);
     }
-  }, [client, initializeClient, handleError]);
+  }, [initializeClient, handleError]);
 
   const disconnect = useCallback(async () => {
     console.log('Disconnecting from bot...');
@@ -934,5 +925,3 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     // Utility methods
     clearMessages,
     clearError,
-  };
-};
