@@ -28,11 +28,14 @@ interface BotMessage {
   content: string;
   timestamp: Date;
   source?: 'typed' | 'spoken';
+  isFinal?: boolean;
 }
 
 export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<BotMessage[]>([]);
+  // Track active interim transcripts by user_id
+  const [activeTranscripts, setActiveTranscripts] = useState<Map<string, string>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -56,6 +59,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   // Clear messages function
   const clearMessages = useCallback(() => {
     setMessages([]);
+    setActiveTranscripts(new Map());
   }, []);
 
   // Set up event listeners for user and bot transcripts
@@ -68,25 +72,47 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       return;
     }
 
-    // Handler for user transcription events (what the user says) - FINAL ONLY
+    // Handler for user transcription events - BOTH interim and final
     const handleUserTranscript = (data: any) => {
       console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
       
       const transcriptText = data?.text || "";
       const isFinal = data?.final ?? false;
+      const userId = data?.user_id || "default";
       const timestamp = data?.timestamp || Date.now();
       
-      // Only process final transcripts
-      if (isFinal && transcriptText && transcriptText.trim()) {
-        console.log("✅ Adding final user transcript:", transcriptText);
-        const message: BotMessage = {
-          id: `user-transcript-${Date.now()}-${Math.random()}`,
-          type: 'user',
-          content: transcriptText.trim(),
-          timestamp: new Date(timestamp),
-          source: 'spoken'
-        };
-        setMessages(prev => [...prev, message]);
+      if (transcriptText && transcriptText.trim()) {
+        if (isFinal) {
+          console.log("✅ Adding final user transcript:", transcriptText);
+          
+          // Remove from active transcripts
+          setActiveTranscripts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(userId);
+            return newMap;
+          });
+          
+          // Add final message to main chat
+          const finalMessage: BotMessage = {
+            id: `user-final-${userId}-${timestamp}`,
+            type: 'user',
+            content: transcriptText.trim(),
+            timestamp: new Date(timestamp),
+            source: 'spoken',
+            isFinal: true
+          };
+          setMessages(prev => [...prev, finalMessage]);
+          
+        } else {
+          console.log("⏳ Updating interim user transcript:", transcriptText);
+          
+          // Update active interim transcript
+          setActiveTranscripts(prev => {
+            const newMap = new Map(prev);
+            newMap.set(userId, transcriptText.trim());
+            return newMap;
+          });
+        }
       }
     };
 
@@ -135,16 +161,16 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   };
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages or active transcripts change
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, activeTranscripts]);
 
   // Additional scroll with delay to ensure DOM updates
   useEffect(() => {
     const timeoutId = setTimeout(scrollToBottom, 150);
     return () => clearTimeout(timeoutId);
-  }, [messages]);
+  }, [messages, activeTranscripts]);
 
   // Register function handlers when connected
   useEffect(() => {
@@ -256,6 +282,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   // FIXED: Simplified textarea disabled logic - no loading state blocking
   const isTextareaDisabled = !isConnected || !isBotReady;
 
+  // Convert active transcripts to display format
+  const activeTranscriptEntries = Array.from(activeTranscripts.entries());
+
   return (
     <Card className={`flex flex-col h-[600px] ${className}`}>
       <CardHeader className="flex-shrink-0 pb-3">
@@ -324,7 +353,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         <div className="flex-1 mb-4 min-h-0">
           <ScrollArea className="h-full">
             <div className="space-y-4 pr-4">
-              {messages.length === 0 ? (
+              {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   {isConnected ? (
                     isBotReady ? (
@@ -352,48 +381,75 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   )}
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex gap-3 ${
-                      message.type === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    {message.type !== 'user' && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                        {getMessageIcon(message.type, message.source)}
-                      </div>
-                    )}
-                    
+                <>
+                  {messages.map((message) => (
                     <div
-                      className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                        message.type === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : message.type === 'system'
-                          ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                          : 'bg-muted border'
+                      key={message.id}
+                      className={`flex gap-3 ${
+                        message.type === 'user' ? 'justify-end' : 'justify-start'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium opacity-80">
-                          {getMessageTypeLabel(message.type, message.source)}
-                        </span>
-                        <span className="text-xs opacity-60">
-                          {formatTimestamp(message.timestamp)}
-                        </span>
+                      {message.type !== 'user' && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                          {getMessageIcon(message.type, message.source)}
+                        </div>
+                      )}
+                      
+                      <div
+                        className={`max-w-[75%] rounded-lg px-4 py-3 ${
+                          message.type === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : message.type === 'system'
+                            ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                            : 'bg-muted border'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium opacity-80">
+                            {getMessageTypeLabel(message.type, message.source)}
+                          </span>
+                          <span className="text-xs opacity-60">
+                            {formatTimestamp(message.timestamp)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {message.content}
+                        </p>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                        {message.content}
-                      </p>
-                    </div>
 
-                    {message.type === 'user' && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                        {getMessageIcon(message.type, message.source)}
+                      {message.type === 'user' && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                          {getMessageIcon(message.type, message.source)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {/* Active Interim Transcripts */}
+                  {activeTranscriptEntries.map(([userId, text]) => (
+                    <div key={`interim-${userId}`} className="flex gap-3 justify-end">
+                      <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium opacity-80">
+                            You (Speaking...)
+                          </span>
+                          <div className="flex gap-1">
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                          </div>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
+                          {text}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                ))
+                      
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
+                        🎤
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -445,6 +501,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
               ) : isUserSpeaking ? (
                 <span className="text-green-600 font-medium">🎤 Voice input detected</span>
+              ) : activeTranscriptEntries.length > 0 ? (
+                <span className="text-green-600 font-medium">💬 Processing speech...</span>
               ) : (
                 <span>💬 Press Enter to send • Shift + Enter for new line</span>
               )}
@@ -452,7 +510,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
             <Button
               onClick={handleClearMessages}
-              disabled={messages.length === 0}
+              disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
               variant="outline"
               size="sm"
             >
