@@ -27,13 +27,12 @@ interface BotMessage {
   type: 'bot' | 'user' | 'system';
   content: string;
   timestamp: Date;
-  source?: 'typed' | 'spoken'; // Track input method
+  source?: 'typed' | 'spoken';
 }
 
 export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<BotMessage[]>([]); // Own state instead of pipecatClient.messages
+  const [messages, setMessages] = useState<BotMessage[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -163,12 +162,12 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel]);
 
+  // FIXED: Fire-and-forget message sending without loading state
   const handleSendMessage = async () => {
-    if (!input.trim() || !isConnected || !isBotReady || isBotSpeaking) return;
+    if (!input.trim() || !isConnected || !isBotReady) return;
 
     const messageContent = input.trim();
-    setInput('');
-    setIsLoading(true);
+    setInput(''); // Clear input immediately
 
     // Add user typed message immediately to UI
     const userMessage: BotMessage = {
@@ -181,25 +180,31 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      // Send the message to the bot context
-      await appendToContext({
+      // Fire-and-forget: Don't await, no loading state
+      appendToContext({
         role: 'user',
         content: messageContent,
         run_immediately: true
+      }).catch((err: any) => {
+        // Only handle actual errors (network failures, etc.)
+        console.error('Failed to send message:', err);
+        toast.error('Failed to send message to bot');
+        
+        // Optionally show error message in chat
+        const errorMessage: BotMessage = {
+          id: `error-${Date.now()}`,
+          type: 'system',
+          content: 'Failed to send message. Please try again.',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
       });
 
-      toast.success('Message sent');
+      console.log('📤 Message sent to bot:', messageContent);
+      
     } catch (err: any) {
-      console.error('Failed to send message:', err);
-      toast.error(err.message || 'Failed to send message');
-      
-      // Remove the user message if sending failed
-      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
-      
-      // Restore the input if sending failed
-      setInput(messageContent);
-    } finally {
-      setIsLoading(false);
+      console.error('Unexpected error sending message:', err);
+      toast.error('Unexpected error occurred');
     }
   };
 
@@ -248,8 +253,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   };
 
-  // Check if textarea should be disabled
-  const isTextareaDisabled = !isConnected || !isBotReady || isLoading || isBotSpeaking;
+  // FIXED: Simplified textarea disabled logic - no loading state blocking
+  const isTextareaDisabled = !isConnected || !isBotReady;
 
   return (
     <Card className={`flex flex-col h-[600px] ${className}`}>
@@ -405,8 +410,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   ? "Connect to start typing..." 
                   : !isBotReady
                   ? "Waiting for assistant to be ready..."
-                  : isBotSpeaking 
-                  ? "Bot is speaking... please wait" 
                   : "Type your message here..."
               }
               value={input}
@@ -425,16 +428,12 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
             
             <Button
               onClick={handleSendMessage}
-              disabled={!input.trim() || isTextareaDisabled || isLoading}
+              disabled={!input.trim() || isTextareaDisabled}
               size="sm"
               className="gap-2 h-fit self-end"
             >
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <CornerDownLeft className="w-4 h-4" />
-              )}
-              {isLoading ? 'Sending...' : 'Send'}
+              <CornerDownLeft className="w-4 h-4" />
+              Send
             </Button>
           </div>
 
@@ -444,8 +443,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
               ) : !isBotReady ? (
                 <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
-              ) : isBotSpeaking ? (
-                <span className="text-amber-600 font-medium">⚠️ Please wait for assistant to finish</span>
               ) : isUserSpeaking ? (
                 <span className="text-green-600 font-medium">🎤 Voice input detected</span>
               ) : (
