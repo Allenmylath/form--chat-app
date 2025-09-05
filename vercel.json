@@ -1,26 +1,10 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next@latest"
-    }
-  ],
-  "outputDirectory": ".next",
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
   "framework": "nextjs",
   "functions": {
-    "app/**/*.tsx": {
-      "maxDuration": 30
-    },
-    "app/**/*.ts": {
+    "app/api/**/*.ts": {
       "maxDuration": 30
     }
-  },
-  "env": {
-    "NODE_ENV": "production"
   },
   "headers": [
     {
@@ -39,12 +23,6 @@
           "value": "1; mode=block"
         }
       ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
     }
   ]
 }
