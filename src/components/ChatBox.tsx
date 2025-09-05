@@ -61,7 +61,13 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
   // Set up event listeners for user and bot transcripts
   useEffect(() => {
-    if (!pipecatClient) return;
+    // Access the actual PipecatClient instance from the hook
+    const actualClient = pipecatClient.client;
+    
+    if (!actualClient || typeof actualClient.on !== 'function') {
+      console.warn("PipecatClient not available or doesn't have .on() method");
+      return;
+    }
 
     // Handler for user transcription events (what the user says) - FINAL ONLY
     const handleUserTranscript = (data: any) => {
@@ -106,16 +112,18 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       }
     };
 
-    // Add event listeners using the JS client .on() method
-    pipecatClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
-    pipecatClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
+    // Add event listeners using the actual client's .on() method
+    actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
+    actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
 
     // Cleanup event listeners
     return () => {
-      pipecatClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
-      pipecatClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
+      if (typeof actualClient.off === 'function') {
+        actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
+        actualClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
+      }
     };
-  }, [pipecatClient]);
+  }, [pipecatClient.client]);
 
   // Enhanced scroll to bottom with better reliability
   const scrollToBottom = () => {
