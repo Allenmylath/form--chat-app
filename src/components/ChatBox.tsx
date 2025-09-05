@@ -59,10 +59,12 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setMessages([]);
   }, []);
 
-  // Listen to user transcription events (what the user says) - FINAL ONLY
-  useRTVIClientEvent(
-    RTVIEvent.UserTranscript,
-    useCallback((data: any) => {
+  // Set up event listeners for user and bot transcripts
+  useEffect(() => {
+    if (!pipecatClient) return;
+
+    // Handler for user transcription events (what the user says) - FINAL ONLY
+    const handleUserTranscript = (data: any) => {
       console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
       
       const transcriptText = data?.text || "";
@@ -81,13 +83,10 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         };
         setMessages(prev => [...prev, message]);
       }
-    }, [])
-  );
+    };
 
-  // Listen to bot transcription (what the bot says) - AGGREGATED
-  useRTVIClientEvent(
-    RTVIEvent.BotTranscript,
-    useCallback((data: any) => {
+    // Handler for bot transcription (what the bot says) - AGGREGATED
+    const handleBotTranscript = (data: any) => {
       console.log("🤖 Bot transcription event:", JSON.stringify(data, null, 2));
       
       const transcriptText = data?.text || "";
@@ -105,8 +104,18 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         
         setMessages(prev => [...prev, message]);
       }
-    }, [])
-  );
+    };
+
+    // Add event listeners using the JS client .on() method
+    pipecatClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
+    pipecatClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
+
+    // Cleanup event listeners
+    return () => {
+      pipecatClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
+      pipecatClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
+    };
+  }, [pipecatClient]);
 
   // Enhanced scroll to bottom with better reliability
   const scrollToBottom = () => {
