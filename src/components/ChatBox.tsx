@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import {
   MicOff
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRTVIClientEvent } from "@pipecat-ai/client-react";
+import { RTVIEvent } from "@pipecat-ai/client-js";
 
 interface ChatBoxProps {
   pipecatClient: any;
@@ -25,11 +27,13 @@ interface BotMessage {
   type: 'bot' | 'user' | 'system';
   content: string;
   timestamp: Date;
+  source?: 'typed' | 'spoken'; // Track input method
 }
 
 export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<BotMessage[]>([]); // Own state instead of pipecatClient.messages
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -38,11 +42,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     isBotReady,
     isBotSpeaking,
     isUserSpeaking,
-    messages,
     error,
-    sendMessage,
     appendToContext,
-    clearMessages,
     
     // Device methods and state
     enableMic,
@@ -52,6 +53,60 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     registerFunctionCallHandler,
     setLogLevel,
   } = pipecatClient;
+
+  // Clear messages function
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
+  // Listen to user transcription events (what the user says) - FINAL ONLY
+  useRTVIClientEvent(
+    RTVIEvent.UserTranscript,
+    useCallback((data: any) => {
+      console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
+      
+      const transcriptText = data?.text || "";
+      const isFinal = data?.final ?? false;
+      const timestamp = data?.timestamp || Date.now();
+      
+      // Only process final transcripts
+      if (isFinal && transcriptText && transcriptText.trim()) {
+        console.log("✅ Adding final user transcript:", transcriptText);
+        const message: BotMessage = {
+          id: `user-transcript-${Date.now()}-${Math.random()}`,
+          type: 'user',
+          content: transcriptText.trim(),
+          timestamp: new Date(timestamp),
+          source: 'spoken'
+        };
+        setMessages(prev => [...prev, message]);
+      }
+    }, [])
+  );
+
+  // Listen to bot transcription (what the bot says) - AGGREGATED
+  useRTVIClientEvent(
+    RTVIEvent.BotTranscript,
+    useCallback((data: any) => {
+      console.log("🤖 Bot transcription event:", JSON.stringify(data, null, 2));
+      
+      const transcriptText = data?.text || "";
+      
+      // Only add if there's actual text content
+      if (transcriptText && transcriptText.trim()) {
+        console.log("✅ Adding bot transcript:", transcriptText);
+        const message: BotMessage = {
+          id: `bot-transcript-${Date.now()}-${Math.random()}`,
+          type: 'bot',
+          content: transcriptText.trim(),
+          timestamp: new Date(),
+          source: 'spoken'
+        };
+        
+        setMessages(prev => [...prev, message]);
+      }
+    }, [])
+  );
 
   // Enhanced scroll to bottom with better reliability
   const scrollToBottom = () => {
@@ -98,6 +153,16 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setInput('');
     setIsLoading(true);
 
+    // Add user typed message immediately to UI
+    const userMessage: BotMessage = {
+      id: `user-typed-${Date.now()}`,
+      type: 'user',
+      content: messageContent,
+      timestamp: new Date(),
+      source: 'typed'
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     try {
       // Send the message to the bot context
       await appendToContext({
@@ -110,6 +175,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     } catch (err: any) {
       console.error('Failed to send message:', err);
       toast.error(err.message || 'Failed to send message');
+      
+      // Remove the user message if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
       
       // Restore the input if sending failed
       setInput(messageContent);
@@ -145,19 +213,19 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getMessageIcon = (type: BotMessage['type']) => {
+  const getMessageIcon = (type: BotMessage['type'], source?: string) => {
     switch (type) {
       case 'bot': return '🤖';
-      case 'user': return '👤';
+      case 'user': return source === 'spoken' ? '🎤' : '👤';
       case 'system': return '⚙️';
       default: return '💬';
     }
   };
 
-  const getMessageTypeLabel = (type: BotMessage['type']) => {
+  const getMessageTypeLabel = (type: BotMessage['type'], source?: string) => {
     switch (type) {
       case 'bot': return 'Assistant';
-      case 'user': return 'You';
+      case 'user': return source === 'spoken' ? 'You (Spoken)' : 'You (Typed)';
       case 'system': return 'System';
       default: return 'Message';
     }
@@ -271,7 +339,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   >
                     {message.type !== 'user' && (
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                        {getMessageIcon(message.type)}
+                        {getMessageIcon(message.type, message.source)}
                       </div>
                     )}
                     
@@ -286,7 +354,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-medium opacity-80">
-                          {getMessageTypeLabel(message.type)}
+                          {getMessageTypeLabel(message.type, message.source)}
                         </span>
                         <span className="text-xs opacity-60">
                           {formatTimestamp(message.timestamp)}
@@ -299,7 +367,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
                     {message.type === 'user' && (
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                        {getMessageIcon(message.type)}
+                        {getMessageIcon(message.type, message.source)}
                       </div>
                     )}
                   </div>
