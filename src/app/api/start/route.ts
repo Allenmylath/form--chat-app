@@ -13,7 +13,7 @@ interface PipecatServerResponse {
 }
 
 const PIPECAT_SERVER_URL = 'https://manjujayamurali--skills-assessment-quiz-bot-fastapi-app.modal.run/connect'
-const FALLBACK_WS_URL = 'wss://manjujayamurali--pipecat-websocket-bot-create-server.modal.run/ws'
+const FALLBACK_WS_URL = 'wss://manjujayamurali--skills-assessment-quiz-bot-fastapi-app.modal.run/ws'
 
 export async function POST(request: NextRequest) {
   try {
