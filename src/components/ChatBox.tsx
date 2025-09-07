@@ -630,6 +630,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                     ))}
                   </>
                 )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
                 <div ref={consoleEndRef} />
               </div>
             </ScrollArea>
