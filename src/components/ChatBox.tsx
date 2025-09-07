@@ -70,13 +70,16 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setLogLevel,
   } = pipecatClient;
 
-  // Enhanced server message logger
-  const logServerMessage = useCallback((message: any, context?: string) => {
+  // Enhanced server message logger - ONLY for ServerMessage events
+  const logServerMessage = useCallback((message: any, eventType: string) => {
+    // Only log if it's a ServerMessage event
+    if (eventType !== 'ServerMessage') return;
+
     const serverMessage: ServerMessage = {
       id: `server-${Date.now()}-${Math.random()}`,
       timestamp: new Date(),
-      type: context || 'unknown',
-      event: message?.type || message?.event || 'unknown',
+      type: 'SERVER_MESSAGE',
+      event: message?.type || message?.event || 'server_message',
       data: message,
       raw: message
     };
@@ -86,8 +89,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     // Enhanced console logging with structured format
     const logStyle = {
       timestamp: new Date().toISOString(),
-      context: context || 'SERVER_MESSAGE',
-      event: message?.type || message?.event || 'unknown',
+      context: 'RTVI_SERVER_MESSAGE',
+      event: message?.type || message?.event || 'server_message',
       message: message
     };
 
@@ -141,59 +144,19 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       return;
     }
 
-    console.log("🔌 Setting up comprehensive event listeners...");
+    console.log("🔌 Setting up ServerMessage event listener only...");
 
-    // List of all possible RTVI events to monitor
-    const eventsToMonitor = [
-      RTVIEvent.Connected,
-      RTVIEvent.Disconnected,
-      RTVIEvent.TransportStateChanged,
-      RTVIEvent.BotConnected,
-      RTVIEvent.BotDisconnected,
-      RTVIEvent.BotReady,
-      RTVIEvent.UserTranscript,
-      RTVIEvent.BotTranscript,
-      RTVIEvent.BotLlmText,
-      RTVIEvent.BotLlmStarted,
-      RTVIEvent.BotLlmStopped,
-      RTVIEvent.BotTtsText,
-      RTVIEvent.BotTtsStarted,
-      RTVIEvent.BotTtsStopped,
-      RTVIEvent.UserStartedSpeaking,
-      RTVIEvent.UserStoppedSpeaking,
-      RTVIEvent.BotStartedSpeaking,
-      RTVIEvent.BotStoppedSpeaking,
-      RTVIEvent.TrackStarted,
-      RTVIEvent.TrackStopped,
-      RTVIEvent.Error,
-      RTVIEvent.MessageError,
-      RTVIEvent.ServerMessage, // This is the correct event for server messages
-      RTVIEvent.Metrics
-    ];
-
-    // Create handlers for all events
-    const eventHandlers: { [key: string]: (data: any) => void } = {};
-
-    eventsToMonitor.forEach(eventType => {
-      eventHandlers[eventType] = (data: any) => {
-        logServerMessage(data, `RTVI_EVENT_${eventType}`);
-      };
-      
-      actualClient.on(eventType, eventHandlers[eventType]);
-    });
-
-    // FIXED: Correct server message handling using event listener
+    // ONLY monitor ServerMessage events
     const handleServerMessage = (data: any) => {
-      logServerMessage(data, "SERVER_MESSAGE_DIRECT");
-      console.log("📨 Direct server message received:", data);
+      logServerMessage(data, "ServerMessage");
+      console.log("📨 RTVI ServerMessage event received:", data);
     };
 
+    // Register only the ServerMessage event listener
     actualClient.on(RTVIEvent.ServerMessage, handleServerMessage);
 
-    // Handler for user transcription events - BOTH interim and final
+    // Still need other essential events for chat functionality
     const handleUserTranscript = (data: any) => {
-      logServerMessage(data, "USER_TRANSCRIPT");
-      
       const transcriptText = data?.text || "";
       const isFinal = data?.final ?? false;
       const userId = data?.user_id || "default";
@@ -234,10 +197,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       }
     };
 
-    // Handler for bot transcription (what the bot says) - AGGREGATED
     const handleBotTranscript = (data: any) => {
-      logServerMessage(data, "BOT_TRANSCRIPT");
-      
       const transcriptText = data?.text || "";
       
       // Only add if there's actual text content
@@ -255,21 +215,15 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       }
     };
 
-    // Override specific handlers for transcript events to maintain chat functionality
+    // Keep essential chat functionality events (but don't log them to console)
     actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
     actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
 
-    console.log(`✅ Monitoring ${eventsToMonitor.length} RTVI events including ServerMessage`);
+    console.log(`✅ Monitoring ONLY RTVIEvent.ServerMessage events in console`);
 
     // Cleanup event listeners
     return () => {
-      console.log("🧹 Cleaning up event listeners...");
-      eventsToMonitor.forEach(eventType => {
-        if (typeof actualClient.off === 'function') {
-          actualClient.off(eventType, eventHandlers[eventType]);
-        }
-      });
-      
+      console.log("🧹 Cleaning up ServerMessage event listener...");
       if (typeof actualClient.off === 'function') {
         actualClient.off(RTVIEvent.ServerMessage, handleServerMessage);
         actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
@@ -709,9 +663,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Terminal className="w-5 h-5" />
-                Server Message Console
+                RTVI ServerMessage Events Only
                 <Badge variant="outline" className="ml-2">
-                  {serverMessages.length} messages
+                  {serverMessages.length} events
                 </Badge>
               </CardTitle>
               
@@ -744,7 +698,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 {serverMessages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
                     <Terminal className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-base font-medium">No RTVI ServerMessage events yet</p>
+                    <p className="text-base font-medium">No ServerMessage events yet</p>
                     <p className="text-sm mt-2">
                       Only RTVIEvent.ServerMessage events will appear here
                     </p>
@@ -760,9 +714,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                           <div className="flex items-center gap-2">
                             <Badge 
                               variant="outline" 
-                              className={`text-xs ${getServerMessageTypeColor(serverMessage.type)}`}
+                              className="text-xs text-purple-600"
                             >
-                              {serverMessage.type}
+                              SERVER_MESSAGE
                             </Badge>
                             {serverMessage.event && (
                               <Badge variant="secondary" className="text-xs">
