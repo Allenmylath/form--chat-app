@@ -424,7 +424,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const activeTranscriptEntries = Array.from(activeTranscripts.entries());
 
   return (
-    <div className={`${showConsole ? 'h-[600px]' : 'h-[500px]'} flex flex-col ${className}`}>
+    <div className={`${showConsole ? 'h-[1200px]' : 'h-[1000px]'} flex flex-col ${className}`}>
       {/* Fixed Height Container with Scroll */}
       <div className="h-full overflow-auto">
         <Card className="flex flex-col h-full">
