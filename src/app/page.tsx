@@ -65,12 +65,12 @@ export default function Page() {
   };
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0">
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8">
         {/* Header with connection button in top right */}
-        <header className="flex-shrink-0 px-4 py-4 relative">
+        <header className="text-center mb-8 relative">
           {/* Connect Button - Top Right */}
-          <div className="absolute top-4 right-4">
+          <div className="absolute top-0 right-0">
             {isConnected ? (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -113,7 +113,7 @@ export default function Page() {
             )}
           </div>
 
-          <div className="text-center">
+          <div>
             <h1 className="text-3xl font-bold text-foreground mb-2">
               Interactive Form & Chat
             </h1>
@@ -123,16 +123,14 @@ export default function Page() {
           </div>
         </header>
 
-        {/* Main Content Grid - Constrained Height */}
-        <div className="flex-1 px-4 pb-4 min-h-0">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 max-w-7xl mx-auto h-full">
-            <div className="lg:col-span-3 h-full">
-              <FormArea className="h-full" pipecatClient={pipecatClient} />
-            </div>
-            
-            <div className="lg:col-span-2 h-full">
-              <ChatBox className="h-full" pipecatClient={pipecatClient} />
-            </div>
+        {/* Main Content Grid - Natural Height */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
+          <div className="lg:col-span-3">
+            <FormArea pipecatClient={pipecatClient} />
+          </div>
+          
+          <div className="lg:col-span-2">
+            <ChatBox pipecatClient={pipecatClient} />
           </div>
         </div>
       </div>
