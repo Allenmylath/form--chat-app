@@ -744,9 +744,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                 {serverMessages.length === 0 ? (
                   <div className="text-center text-muted-foreground py-8">
                     <Terminal className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-base font-medium">No server messages yet</p>
+                    <p className="text-base font-medium">No RTVI ServerMessage events yet</p>
                     <p className="text-sm mt-2">
-                      Server messages will appear here when the bot is connected
+                      Only RTVIEvent.ServerMessage events will appear here
                     </p>
                   </div>
                 ) : (
