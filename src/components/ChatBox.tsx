@@ -264,7 +264,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   useEffect(() => {
     if (isConnected && isBotReady) {
       // Register example function call handlers
-      registerFunctionCallHandler('clear_chat', async (params) => {
+      registerFunctionCallHandler('clear_chat', async (params:any) => {
         console.log('Function call: clear_chat', params);
         logServerMessage({ type: 'function_call', name: 'clear_chat', params }, 'FUNCTION_CALL');
         clearMessages();
