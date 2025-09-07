@@ -409,8 +409,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
   return (
     <div className={`h-full flex flex-col ${className}`}>
-      {/* Main Chat Card */}
-      <Card className="flex flex-col h-full">
+      {/* Main Chat Card - Dynamically sized based on console visibility */}
+      <Card className={`flex flex-col ${showConsole ? 'flex-1 min-h-0' : 'h-full'}`}>
         <CardHeader className="flex-shrink-0 pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -656,16 +656,16 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         </CardContent>
       </Card>
 
-      {/* Server Console Card */}
+      {/* Server Console Card - Compact height with minimal spacing */}
       {showConsole && (
-        <Card className="h-[400px] flex flex-col mt-4">
-          <CardHeader className="flex-shrink-0 pb-3">
+        <Card className="h-[240px] flex flex-col mt-2 flex-shrink-0">
+          <CardHeader className="flex-shrink-0 pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Terminal className="w-5 h-5" />
-                RTVI ServerMessage Events Only
-                <Badge variant="outline" className="ml-2">
-                  {serverMessages.length} events
+              <CardTitle className="text-base flex items-center gap-2">
+                <Terminal className="w-4 h-4" />
+                RTVI ServerMessage Events
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {serverMessages.length}
                 </Badge>
               </CardTitle>
               
@@ -676,7 +676,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   variant="outline"
                   size="sm"
                 >
-                  Clear Console
+                  Clear
                 </Button>
                 
                 <Button
@@ -692,14 +692,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           
           <Separator />
           
-          <CardContent className="flex-1 p-4 min-h-0">
+          <CardContent className="flex-1 p-3 min-h-0">
             <ScrollArea className="h-full">
               <div className="space-y-2 pr-4">
                 {serverMessages.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-8">
-                    <Terminal className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-base font-medium">No ServerMessage events yet</p>
-                    <p className="text-sm mt-2">
+                  <div className="text-center text-muted-foreground py-6">
+                    <Terminal className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-medium">No ServerMessage events yet</p>
+                    <p className="text-xs mt-1">
                       Only RTVIEvent.ServerMessage events will appear here
                     </p>
                   </div>
@@ -708,7 +708,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                     {serverMessages.map((serverMessage) => (
                       <div
                         key={serverMessage.id}
-                        className="border rounded-lg p-3 bg-muted/30 font-mono text-xs space-y-2"
+                        className="border rounded-lg p-2 bg-muted/30 font-mono text-xs space-y-2"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -724,7 +724,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                               </Badge>
                             )}
                           </div>
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground text-xs">
                             {formatTimestamp(serverMessage.timestamp)}
                           </span>
                         </div>
