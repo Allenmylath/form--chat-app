@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { LayoutList, HelpCircle, Send, Mic, CheckCircle2, Clock } from "lucide-react";
+import { LayoutList, HelpCircle, Send, Mic, CheckCircle2, Clock, Trophy, Award, Star } from "lucide-react";
 import { RTVIEvent } from "@pipecat-ai/client-js";
 
 interface QuizOption {
@@ -25,6 +25,22 @@ interface QuizQuestion {
   question_text: string;
   options: QuizOption[];
   total_questions: number;
+}
+
+interface QuizResults {
+  type: string;
+  total_score: number;
+  max_score: number;
+  percentage: number;
+  result_message: string;
+  answers: {
+    question_id: string;
+    question_text: string;
+    question_index: number;
+    selected_option: string;
+    option_text: string;
+    points_earned: number;
+  }[];
 }
 
 interface UserAnswer {
@@ -55,6 +71,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
   const [isLoading, setIsLoading] = useState(false);
   const [serverMessages, setServerMessages] = useState<ServerMessage[]>([]);
   const [hasQuizStarted, setHasQuizStarted] = useState(false);
+  const [quizResults, setQuizResults] = useState<QuizResults | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -103,7 +120,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
 
     console.log("📝 FormArea: Setting up server message listeners...");
 
-    // Handler for server messages - looking for quiz questions
+    // Handler for server messages - looking for quiz questions and results
     const handleServerMessage = (data: any) => {
       logServerMessage(data, "SERVER_MESSAGE_QUIZ");
       
@@ -123,8 +140,29 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
         setCurrentQuestion(quizQuestion);
         setSelectedAnswer(""); // Reset selection for new question
         setHasQuizStarted(true);
+        setQuizResults(null); // Clear any previous results
         
         toast.success(`Question ${data.question_index + 1} of ${data.total_questions} received`);
+      }
+      
+      // Handle quiz results
+      if (data && data.type === 'quiz_results') {
+        console.log("🏆 Quiz results detected:", data);
+        
+        const results: QuizResults = {
+          type: data.type,
+          total_score: data.total_score,
+          max_score: data.max_score,
+          percentage: data.percentage,
+          result_message: data.result_message,
+          answers: data.answers || []
+        };
+        
+        setQuizResults(results);
+        setCurrentQuestion(null); // Clear current question
+        setHasQuizStarted(false); // Reset quiz state
+        
+        toast.success("Quiz completed! Results received.");
       }
       
       // Handle other message types if needed
@@ -282,6 +320,20 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
     return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const getScoreColor = (percentage: number) => {
+    if (percentage >= 90) return "text-green-600";
+    if (percentage >= 80) return "text-blue-600";
+    if (percentage >= 70) return "text-yellow-600";
+    return "text-orange-600";
+  };
+
+  const getScoreBadgeVariant = (percentage: number) => {
+    if (percentage >= 90) return "default";
+    if (percentage >= 80) return "secondary";
+    if (percentage >= 70) return "outline";
+    return "destructive";
+  };
+
   return (
     <Card className={`h-full flex flex-col ${className}`}>
       <CardHeader className="pb-4 flex-shrink-0">
@@ -294,17 +346,19 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
               {isBotSpeaking && <div className="w-4 h-4 bg-blue-600 rounded-full animate-pulse" />}
             </CardTitle>
             <CardDescription>
-              {currentQuestion 
-                ? `Question ${currentQuestion.question_index + 1} of ${currentQuestion.total_questions}`
-                : hasQuizStarted 
-                  ? "Waiting for next question..."
-                  : "Ready to receive quiz questions"
+              {quizResults 
+                ? "Quiz completed - Results available"
+                : currentQuestion 
+                  ? `Question ${currentQuestion.question_index + 1} of ${currentQuestion.total_questions}`
+                  : hasQuizStarted 
+                    ? "Waiting for next question..."
+                    : "Ready to receive quiz questions"
               }
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <div className="text-sm text-muted-foreground">
-              {answers.length} answered
+              {quizResults ? `${quizResults.answers.length} questions` : `${answers.length} answered`}
             </div>
             {isConnected && isBotReady ? (
               <Badge variant="secondary" className="text-xs">
@@ -335,8 +389,104 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
       <CardContent className="p-0 flex flex-col flex-1 min-h-0">
         <ScrollArea ref={scrollAreaRef} className="flex-1 px-6">
           <div className="py-6">
+            {/* Quiz Results Display */}
+            {quizResults && (
+              <div className="space-y-6">
+                {/* Results Header */}
+                <div className="text-center space-y-4 pb-6 border-b">
+                  <div className="flex justify-center">
+                    <Trophy className="h-16 w-16 text-primary mb-4" />
+                  </div>
+                  <h2 className="text-2xl font-bold">Quiz Complete!</h2>
+                  
+                  {/* Score Display */}
+                  <div className="space-y-2">
+                    <div className={`text-4xl font-bold ${getScoreColor(quizResults.percentage)}`}>
+                      {quizResults.percentage.toFixed(1)}%
+                    </div>
+                    <div className="text-muted-foreground">
+                      {quizResults.total_score} out of {quizResults.max_score} points
+                    </div>
+                    <Badge variant={getScoreBadgeVariant(quizResults.percentage)} className="text-sm px-3 py-1">
+                      <Star className="w-4 h-4 mr-1" />
+                      {quizResults.percentage >= 90 ? "Excellent" : 
+                       quizResults.percentage >= 80 ? "Great" : 
+                       quizResults.percentage >= 70 ? "Good" : "Keep Learning"}
+                    </Badge>
+                  </div>
+                  
+                  {/* Result Message */}
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 max-w-2xl mx-auto">
+                    <p className="text-sm leading-relaxed">{quizResults.result_message}</p>
+                  </div>
+                </div>
+
+                {/* Detailed Results */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Award className="h-5 w-5 text-primary" />
+                    Question Breakdown
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    {quizResults.answers.map((answer, index) => (
+                      <div key={answer.question_id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
+                            {answer.question_index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm leading-relaxed">
+                              {answer.question_text}
+                            </h4>
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {answer.selected_option}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {answer.option_text}
+                                </span>
+                              </div>
+                              <Badge variant="secondary" className="text-xs">
+                                {answer.points_earned} pts
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => {
+                      setQuizResults(null);
+                      setAnswers([]);
+                      setHasQuizStarted(false);
+                    }}
+                  >
+                    Start New Quiz
+                  </Button>
+                  <Button 
+                    variant="default" 
+                    className="flex-1"
+                    onClick={handleRequestQuestion}
+                    disabled={!isConnected || !isBotReady}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Request Another Quiz
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* No Question State */}
-            {!currentQuestion && !hasQuizStarted && (
+            {!currentQuestion && !hasQuizStarted && !quizResults && (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <HelpCircle className="h-16 w-16 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Ready for Quiz Questions</h3>
@@ -353,7 +503,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
             )}
 
             {/* Waiting for Next Question */}
-            {!currentQuestion && hasQuizStarted && (
+            {!currentQuestion && hasQuizStarted && !quizResults && (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
                 <h3 className="text-lg font-semibold mb-2">Waiting for Next Question</h3>
@@ -364,7 +514,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
             )}
 
             {/* Current Question Display */}
-            {currentQuestion && (
+            {currentQuestion && !quizResults && (
               <div className="space-y-6">
                 <div className="space-y-4">
                   <div className="flex items-start gap-3">
@@ -420,7 +570,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
             )}
 
             {/* Previous Answers Summary */}
-            {answers.length > 0 && (
+            {answers.length > 0 && !quizResults && (
               <div className="mt-8 pt-6 border-t">
                 <h4 className="text-sm font-medium text-muted-foreground mb-3">
                   Previous Answers ({answers.length})
@@ -446,7 +596,7 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
         </ScrollArea>
 
         {/* Submit Button */}
-        {currentQuestion && (
+        {currentQuestion && !quizResults && (
           <div className="border-t bg-card p-6 space-y-4 flex-shrink-0">
             <Button
               onClick={handleSubmitAnswer}
