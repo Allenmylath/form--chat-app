@@ -138,22 +138,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     console.log('🧹 Server message console cleared');
   }, []);
 
-  // Add test messages to verify scrolling
-  const addTestMessages = useCallback(() => {
-    const testMessages: BotMessage[] = [];
-    for (let i = 1; i <= 15; i++) {
-      testMessages.push({
-        id: `test-${Date.now()}-${i}`,
-        type: i % 3 === 0 ? 'bot' : 'user',
-        content: `Test message #${i} - This is a longer message to demonstrate the scrolling functionality. The message area should scroll when there are more messages than can fit in the visible area.`,
-        timestamp: new Date(Date.now() + i * 1000),
-        source: i % 2 === 0 ? 'typed' : 'spoken'
-      });
-    }
-    setMessages(prev => [...prev, ...testMessages]);
-    toast.success('Added 15 test messages to verify scrolling');
-  }, []);
-
   // FIXED: Comprehensive event monitoring using the correct approach
   useEffect(() => {
     const actualClient = pipecatClient.client;
@@ -680,14 +664,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   </div>
 
                   <div className="flex gap-2">
-                    <Button
-                      onClick={addTestMessages}
-                      variant="outline"
-                      size="sm"
-                    >
-                      Test Scroll
-                    </Button>
-                    
                     <Button
                       onClick={handleClearMessages}
                       disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
