@@ -437,26 +437,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
   const getServerMessageTypeColor = (type: string) => {
     const colorMap: { [key: string]: string } = {
-      'USER_TRANSCRIPT': 'text-blue-600',
-      'BOT_TRANSCRIPT': 'text-green-600',
       'SERVER_MESSAGE': 'text-purple-600',
-      'SERVER_MESSAGE_DIRECT': 'text-purple-700',
-      'RTVI_EVENT': 'text-orange-600',
-      'TRANSPORT_MESSAGE': 'text-cyan-600',
-      'FUNCTION_CALL': 'text-indigo-600',
       'OUTGOING_MESSAGE': 'text-teal-600',
       'USER_ACTION': 'text-amber-600',
+      'FUNCTION_CALL': 'text-indigo-600',
       'ERROR': 'text-red-600'
     };
     
-    // Check if type starts with any known prefix
-    for (const [prefix, color] of Object.entries(colorMap)) {
-      if (type.startsWith(prefix)) {
-        return color;
-      }
-    }
-    
-    return 'text-gray-600';
+    return colorMap[type] || 'text-gray-600';
   };
 
   // Simplified textarea disabled logic - no loading state blocking
