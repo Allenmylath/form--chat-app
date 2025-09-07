@@ -49,8 +49,11 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const [showConsole, setShowConsole] = useState(false);
   // Track active interim transcripts by user_id
   const [activeTranscripts, setActiveTranscripts] = useState<Map<string, string>>(new Map());
+  // Track if user has manually scrolled up
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -248,38 +251,29 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     };
   }, [pipecatClient.client, logServerMessage]);
 
-  // Auto-scroll to bottom with better reliability
+  // Smart auto-scroll - only when user hasn't manually scrolled up
   useEffect(() => {
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        // Use instant scroll for immediate feedback
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'instant',
-          block: 'end',
-          inline: 'nearest'
-        });
-      }
-    };
-
-    // Immediate scroll without delay for better UX
-    scrollToBottom();
-  }, [messages, activeTranscripts]);
-
-  // Scroll console when server messages change - FIXED: Always scroll to latest
-  useEffect(() => {
-    if (showConsole && consoleEndRef.current) {
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        if (consoleEndRef.current) {
-          consoleEndRef.current.scrollIntoView({ 
-            behavior: 'instant',
-            block: 'end',
-            inline: 'nearest'
-          });
-        }
+    if (!isUserScrolling && messagesEndRef.current) {
+      // Only auto-scroll if user hasn't manually scrolled up
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
       });
     }
-  }, [serverMessages, showConsole]);
+  }, [messages, activeTranscripts, isUserScrolling]);
+
+  // Detect when user manually scrolls
+  const handleMessagesScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    
+    // Check if user is near bottom (within 50px)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+    
+    // Update user scrolling state
+    setIsUserScrolling(!isNearBottom);
+  };
 
   // Register function handlers when connected
   useEffect(() => {
@@ -305,6 +299,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
     const messageContent = input.trim();
     setInput(''); // Clear input immediately
+    setIsUserScrolling(false); // Reset scrolling state so new message scrolls to bottom
 
     // Add user typed message immediately to UI
     const userMessage: BotMessage = {
@@ -505,8 +500,12 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         <Separator />
 
         <CardContent className="flex-1 p-4 flex flex-col min-h-0">
-          {/* Messages Area - Scrollable with fixed height */}
-          <div className="flex-1 overflow-auto mb-4 border rounded-lg p-3">
+          {/* Messages Area - Scrollable with manual control */}
+          <div 
+            ref={messagesContainerRef}
+            className="flex-1 overflow-auto mb-4 border rounded-lg p-3" 
+            onScroll={handleMessagesScroll}
+          >
             <div className="space-y-4">
               {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
@@ -609,6 +608,23 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
               <div ref={messagesEndRef} />
             </div>
           </div>
+
+          {/* Scroll indicator when user has scrolled up */}
+          {isUserScrolling && (
+            <div className="flex justify-center mb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsUserScrolling(false);
+                  messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="text-xs gap-1"
+              >
+                ↓ New messages below
+              </Button>
+            </div>
+          )}
 
           {/* Input Area - Fixed at bottom */}
           <div className="flex-shrink-0">
