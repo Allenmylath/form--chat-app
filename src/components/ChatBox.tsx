@@ -408,9 +408,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const activeTranscriptEntries = Array.from(activeTranscripts.entries());
 
   return (
-    <div className={`h-full flex flex-col ${className}`}>
-      {/* Main Chat Card - Dynamically sized based on console visibility */}
-      <Card className={`flex flex-col ${showConsole ? 'flex-1 min-h-0' : 'h-full'}`}>
+    <div className={`h-full grid ${showConsole ? 'grid-rows-[1fr_240px]' : 'grid-rows-[1fr]'} gap-2 ${className}`}>
+      {/* Main Chat Card - Now uses CSS Grid for predictable sizing */}
+      <Card className="flex flex-col min-h-0">
         <CardHeader className="flex-shrink-0 pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -656,9 +656,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         </CardContent>
       </Card>
 
-      {/* Server Console Card - Compact height with minimal spacing */}
+      {/* Server Console Card - Grid-positioned for predictable layout */}
       {showConsole && (
-        <Card className="h-[240px] flex flex-col mt-2 flex-shrink-0">
+        <Card className="flex flex-col min-h-0">
           <CardHeader className="flex-shrink-0 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
