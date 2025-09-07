@@ -306,44 +306,33 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   }, [pipecatClient.client, isConnected, logServerMessage]);
 
-  // Enhanced scroll to bottom with better reliability
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'end',
-        inline: 'nearest'
-      });
-    }
-  };
+  // Auto-scroll to bottom with better reliability
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'end',
+          inline: 'nearest'
+        });
+      }
+    };
 
-  const scrollConsoleToBottom = () => {
-    if (consoleEndRef.current) {
+    // Small delay to ensure DOM updates
+    const timeoutId = setTimeout(scrollToBottom, 100);
+    return () => clearTimeout(timeoutId);
+  }, [messages]);
+
+  // Scroll console when server messages change
+  useEffect(() => {
+    if (showConsole && consoleEndRef.current) {
       consoleEndRef.current.scrollIntoView({ 
         behavior: 'smooth',
         block: 'end',
         inline: 'nearest'
       });
     }
-  };
-
-  // Scroll to bottom when messages or active transcripts change
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, activeTranscripts]);
-
-  // Scroll console when server messages change
-  useEffect(() => {
-    if (showConsole) {
-      scrollConsoleToBottom();
-    }
   }, [serverMessages, showConsole]);
-
-  // Additional scroll with delay to ensure DOM updates
-  useEffect(() => {
-    const timeoutId = setTimeout(scrollToBottom, 150);
-    return () => clearTimeout(timeoutId);
-  }, [messages, activeTranscripts]);
 
   // Register function handlers when connected
   useEffect(() => {
@@ -363,7 +352,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel, logServerMessage]);
 
-  // FIXED: Fire-and-forget message sending without loading state
+  // Fire-and-forget message sending without loading state
   const handleSendMessage = async () => {
     if (!input.trim() || !isConnected || !isBotReady) return;
 
@@ -497,16 +486,16 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     return 'text-gray-600';
   };
 
-  // FIXED: Simplified textarea disabled logic - no loading state blocking
+  // Simplified textarea disabled logic - no loading state blocking
   const isTextareaDisabled = !isConnected || !isBotReady;
 
   // Convert active transcripts to display format
   const activeTranscriptEntries = Array.from(activeTranscripts.entries());
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`h-full flex flex-col ${className}`}>
       {/* Main Chat Card */}
-      <Card className="flex flex-col h-[600px]">
+      <Card className="flex flex-col h-full">
         <CardHeader className="flex-shrink-0 pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -592,61 +581,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                           <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
                           <p className="text-base font-medium">Start a conversation</p>
                           <p className="text-sm mt-2">
-                      Server messages will appear here when the bot is connected
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {serverMessages.map((serverMessage) => (
-                      <div
-                        key={serverMessage.id}
-                        className="border rounded-lg p-3 bg-muted/30 font-mono text-xs space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant="outline" 
-                              className={`text-xs ${getServerMessageTypeColor(serverMessage.type)}`}
-                            >
-                              {serverMessage.type}
-                            </Badge>
-                            {serverMessage.event && (
-                              <Badge variant="secondary" className="text-xs">
-                                {serverMessage.event}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-muted-foreground">
-                            {formatTimestamp(serverMessage.timestamp)}
-                          </span>
-                        </div>
-                        
-                        <div className="bg-black/10 rounded p-2 overflow-x-auto">
-                          <pre className="text-xs whitespace-pre-wrap">
-                            {JSON.stringify(serverMessage.raw, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-                <div ref={consoleEndRef} />
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}-2">
                             You can speak directly using the microphone or type messages below
                           </p>
                         </>
@@ -809,7 +743,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
       {/* Server Console Card */}
       {showConsole && (
-        <Card className="h-[400px] flex flex-col">
+        <Card className="h-[400px] flex flex-col mt-4">
           <CardHeader className="flex-shrink-0 pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -850,4 +784,51 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
                   <div className="text-center text-muted-foreground py-8">
                     <Terminal className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p className="text-base font-medium">No server messages yet</p>
-                    <p className="text-sm mt
+                    <p className="text-sm mt-2">
+                      Server messages will appear here when the bot is connected
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {serverMessages.map((serverMessage) => (
+                      <div
+                        key={serverMessage.id}
+                        className="border rounded-lg p-3 bg-muted/30 font-mono text-xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${getServerMessageTypeColor(serverMessage.type)}`}
+                            >
+                              {serverMessage.type}
+                            </Badge>
+                            {serverMessage.event && (
+                              <Badge variant="secondary" className="text-xs">
+                                {serverMessage.event}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground">
+                            {formatTimestamp(serverMessage.timestamp)}
+                          </span>
+                        </div>
+                        
+                        <div className="bg-black/10 rounded p-2 overflow-x-auto">
+                          <pre className="text-xs whitespace-pre-wrap">
+                            {JSON.stringify(serverMessage.raw, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div ref={consoleEndRef} />
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
