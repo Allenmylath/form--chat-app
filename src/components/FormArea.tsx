@@ -153,7 +153,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   // Add this useEffect to log all server messages
   useEffect(() => {
     if (pipecatClient.client && isConnected) {
-      pipecatClient.client.onServerMessage((message) => {
+      pipecatClient.client.onServerMessage((message: any) => {
         console.log("📨 RTVI Server Message:", message);
       });
     }
