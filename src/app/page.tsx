@@ -65,12 +65,12 @@ export default function Page() {
   };
 
   return (
-    <div className="h-screen bg-background flex flex-col">
-      <div className="container mx-auto px-4 py-8 flex-1 flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header with connection button in top right */}
-        <header className="text-center mb-8 flex-shrink-0 relative">
+        <header className="flex-shrink-0 px-4 py-4 relative">
           {/* Connect Button - Top Right */}
-          <div className="absolute top-0 right-0">
+          <div className="absolute top-4 right-4">
             {isConnected ? (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -113,22 +113,26 @@ export default function Page() {
             )}
           </div>
 
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Interactive Form & Chat
-          </h1>
-          <p className="text-muted-foreground mb-4">
-            Complete the form and chat with our assistant
-          </p>
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Interactive Form & Chat
+            </h1>
+            <p className="text-muted-foreground">
+              Complete the form and chat with our assistant
+            </p>
+          </div>
         </header>
 
-        {/* Main Content Grid - Always Visible */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 max-w-7xl mx-auto flex-1 min-h-0">
-          <div className="lg:col-span-3 flex h-full">
-            <FormArea className="flex-1" pipecatClient={pipecatClient} />
-          </div>
-          
-          <div className="lg:col-span-2 flex h-full">
-            <ChatBox pipecatClient={pipecatClient} />
+        {/* Main Content Grid - Constrained Height */}
+        <div className="flex-1 px-4 pb-4 min-h-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 max-w-7xl mx-auto h-full">
+            <div className="lg:col-span-3 h-full">
+              <FormArea className="h-full" pipecatClient={pipecatClient} />
+            </div>
+            
+            <div className="lg:col-span-2 h-full">
+              <ChatBox className="h-full" pipecatClient={pipecatClient} />
+            </div>
           </div>
         </div>
       </div>
