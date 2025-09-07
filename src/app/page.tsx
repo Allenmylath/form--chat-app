@@ -123,11 +123,11 @@ export default function Page() {
 
         {/* Main Content Grid - Always Visible */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 max-w-7xl mx-auto flex-1 min-h-0">
-          <div className="lg:col-span-3 flex">
+          <div className="lg:col-span-3 flex h-full">
             <FormArea className="flex-1" pipecatClient={pipecatClient} />
           </div>
           
-          <div className="lg:col-span-2 flex">
+          <div className="lg:col-span-2 flex h-full">
             <ChatBox pipecatClient={pipecatClient} />
           </div>
         </div>
