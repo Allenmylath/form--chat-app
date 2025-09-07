@@ -663,11 +663,11 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         </Card>
       </div>
 
-      {/* Server Console Card - FIXED: Absolute height constraint */}
+      {/* Server Console Card - ABSOLUTE HEIGHT CONSTRAINT */}
       {showConsole && (
-        <div className="h-60 flex-shrink-0">
-          <Card className="h-full flex flex-col">
-            <CardHeader className="flex-shrink-0 pb-2">
+        <div className="h-60 max-h-60 flex-shrink-0 overflow-hidden">
+          <Card className="h-full max-h-full flex flex-col overflow-hidden">
+            <CardHeader className="flex-shrink-0 pb-2 min-h-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Terminal className="w-4 h-4" />
@@ -698,58 +698,60 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
               </div>
             </CardHeader>
             
-            <Separator />
+            <Separator className="flex-shrink-0" />
             
-            <CardContent className="flex-1 p-3 min-h-0 overflow-hidden">
-              <ScrollArea className="h-full">
-                <div className="space-y-2 pr-4">
-                  {serverMessages.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-6">
-                      <Terminal className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm font-medium">No ServerMessage events yet</p>
-                      <p className="text-xs mt-1">
-                        Only RTVIEvent.ServerMessage events will appear here
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {serverMessages.map((serverMessage) => (
-                        <div
-                          key={serverMessage.id}
-                          className="border rounded-lg p-2 bg-muted/30 font-mono text-xs space-y-2"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge 
-                                variant="outline" 
-                                className="text-xs text-purple-600"
-                              >
-                                SERVER_MESSAGE
-                              </Badge>
-                              {serverMessage.event && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {serverMessage.event}
+            <div className="flex-1 min-h-0 overflow-hidden p-3">
+              <div className="h-full max-h-full overflow-hidden">
+                <ScrollArea className="h-full max-h-full">
+                  <div className="space-y-2 pr-4">
+                    {serverMessages.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-6">
+                        <Terminal className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm font-medium">No ServerMessage events yet</p>
+                        <p className="text-xs mt-1">
+                          Only RTVIEvent.ServerMessage events will appear here
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {serverMessages.map((serverMessage) => (
+                          <div
+                            key={serverMessage.id}
+                            className="border rounded-lg p-2 bg-muted/30 font-mono text-xs space-y-2 flex-shrink-0"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-xs text-purple-600"
+                                >
+                                  SERVER_MESSAGE
                                 </Badge>
-                              )}
+                                {serverMessage.event && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {serverMessage.event}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="text-muted-foreground text-xs">
+                                {formatTimestamp(serverMessage.timestamp)}
+                              </span>
                             </div>
-                            <span className="text-muted-foreground text-xs">
-                              {formatTimestamp(serverMessage.timestamp)}
-                            </span>
+                            
+                            <div className="bg-black/10 rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">
+                              <pre className="text-xs whitespace-pre-wrap break-words">
+                                {JSON.stringify(serverMessage.raw, null, 2)}
+                              </pre>
+                            </div>
                           </div>
-                          
-                          <div className="bg-black/10 rounded p-2 overflow-x-auto">
-                            <pre className="text-xs whitespace-pre-wrap">
-                              {JSON.stringify(serverMessage.raw, null, 2)}
-                            </pre>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  <div ref={consoleEndRef} />
-                </div>
-              </ScrollArea>
-            </CardContent>
+                        ))}
+                      </>
+                    )}
+                    <div ref={consoleEndRef} />
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
           </Card>
         </div>
       )}
