@@ -1,531 +1,572 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { 
-  CornerDownLeft, 
-  MessageSquare, 
-  Mic, 
-  MicOff
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { useRTVIClientEvent } from "@pipecat-ai/client-react";
-import { RTVIEvent } from "@pipecat-ai/client-js";
+import { useState, useRef, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { LayoutList, MessageCircleQuestionMark, RotateCcw, ChevronLeft, ChevronRight, Mic, Send } from "lucide-react";
 
-interface ChatBoxProps {
-  pipecatClient: any;
-  className?: string;
-}
-
-interface BotMessage {
+interface Option {
   id: string;
-  type: 'bot' | 'user' | 'system';
-  content: string;
-  timestamp: Date;
-  source?: 'typed' | 'spoken';
-  isFinal?: boolean;
+  label: string;
 }
 
-export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<BotMessage[]>([]);
-  // Track active interim transcripts by user_id
-  const [activeTranscripts, setActiveTranscripts] = useState<Map<string, string>>(new Map());
+interface Question {
+  id: string;
+  text: string;
+  type: "single" | "multi";
+  options: Option[];
+  required?: boolean;
+}
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+interface FormAreaProps {
+  initialQuestions?: Question[];
+  className?: string;
+  pipecatClient: {
+    client: any;
+    isConnected: boolean;
+    isConnecting: boolean;
+    isBotReady: boolean;
+    isBotSpeaking: boolean;
+    isUserSpeaking: boolean;
+    messages: Array<{
+      id: string;
+      type: 'user' | 'bot' | 'system';
+      content: string;
+      timestamp: Date;
+    }>;
+    error: string | null;
+    sendMessage: (msgType: string, data: any) => void;
+    sendRequest: (msgType: string, data: any) => Promise<any>;
+    clearMessages: () => void;
+  };
+}
+
+const defaultQuestions: Question[] = [
+  {
+    id: "q1",
+    text: "What is your preferred programming language?",
+    type: "single",
+    required: true,
+    options: [
+      { id: "js", label: "JavaScript" },
+      { id: "py", label: "Python" },
+      { id: "ts", label: "TypeScript" },
+      { id: "java", label: "Java" },
+    ],
+  },
+  {
+    id: "q2",
+    text: "Which frameworks have you used? (Select all that apply)",
+    type: "multi",
+    options: [
+      { id: "react", label: "React" },
+      { id: "vue", label: "Vue.js" },
+      { id: "angular", label: "Angular" },
+      { id: "svelte", label: "Svelte" },
+    ],
+  },
+];
+
+export default function FormArea({ initialQuestions, className, pipecatClient }: FormAreaProps) {
+  const [questions, setQuestions] = useState<Question[]>(initialQuestions || defaultQuestions);
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const {
     isConnected,
     isBotReady,
     isBotSpeaking,
     isUserSpeaking,
-    error,
-    appendToContext,
-    
-    // Device methods and state
-    enableMic,
-    isMicEnabled,
-    
-    // Advanced methods
-    registerFunctionCallHandler,
-    setLogLevel,
+    sendMessage,
+    sendRequest,
   } = pipecatClient;
-
-  // Clear messages function
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-    setActiveTranscripts(new Map());
-  }, []);
-
-  // Set up event listeners for user and bot transcripts
-  useEffect(() => {
-    // Access the actual PipecatClient instance from the hook
-    const actualClient = pipecatClient.client;
-    
-    if (!actualClient || typeof actualClient.on !== 'function') {
-      console.warn("PipecatClient not available or doesn't have .on() method");
-      return;
-    }
-
-    // Handler for user transcription events - BOTH interim and final
-    const handleUserTranscript = (data: any) => {
-      console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
-      
-      const transcriptText = data?.text || "";
-      const isFinal = data?.final ?? false;
-      const userId = data?.user_id || "default";
-      const timestamp = data?.timestamp || Date.now();
-      
-      if (transcriptText && transcriptText.trim()) {
-        if (isFinal) {
-          console.log("✅ Adding final user transcript:", transcriptText);
-          
-          // Remove from active transcripts
-          setActiveTranscripts(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(userId);
-            return newMap;
-          });
-          
-          // Add final message to main chat
-          const finalMessage: BotMessage = {
-            id: `user-final-${userId}-${timestamp}`,
-            type: 'user',
-            content: transcriptText.trim(),
-            timestamp: new Date(timestamp),
-            source: 'spoken',
-            isFinal: true
-          };
-          setMessages(prev => [...prev, finalMessage]);
-          
-        } else {
-          console.log("⏳ Updating interim user transcript:", transcriptText);
-          
-          // Update active interim transcript
-          setActiveTranscripts(prev => {
-            const newMap = new Map(prev);
-            newMap.set(userId, transcriptText.trim());
-            return newMap;
-          });
-        }
-      }
-    };
-
-    // Handler for bot transcription (what the bot says) - AGGREGATED
-    const handleBotTranscript = (data: any) => {
-      console.log("🤖 Bot transcription event:", JSON.stringify(data, null, 2));
-      
-      const transcriptText = data?.text || "";
-      
-      // Only add if there's actual text content
-      if (transcriptText && transcriptText.trim()) {
-        console.log("✅ Adding bot transcript:", transcriptText);
-        const message: BotMessage = {
-          id: `bot-transcript-${Date.now()}-${Math.random()}`,
-          type: 'bot',
-          content: transcriptText.trim(),
-          timestamp: new Date(),
-          source: 'spoken'
-        };
-        
-        setMessages(prev => [...prev, message]);
-      }
-    };
-
-    // Add event listeners using the actual client's .on() method
-    actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
-    actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
-
-    // Cleanup event listeners
-    return () => {
-      if (typeof actualClient.off === 'function') {
-        actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
-        actualClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
-      }
-    };
-  }, [pipecatClient.client]);
 
   // Add this useEffect to log all server messages
   useEffect(() => {
-    if (pipecatClient.client && isConnected) {
-      pipecatClient.client.onServerMessage((message: any) => {
-        console.log("📨 RTVI Server Message:", message);
+    const actualClient = pipecatClient.client;
+    
+    if (!actualClient) {
+      console.warn("PipecatClient not available for server message logging");
+      return;
+    }
+
+    // Check if onServerMessage method exists
+    if (typeof actualClient.onServerMessage !== 'function') {
+      console.warn("onServerMessage method not available on client:", typeof actualClient.onServerMessage);
+      return;
+    }
+
+    try {
+      // Set up server message handler as per documentation
+      actualClient.onServerMessage((message: any) => {
+        console.log("📨 RTVI Server Message in FormArea:", message);
+        
+        // Handle specific message types if needed
+        if (message?.data?.msg === 'language-updated') {
+          console.log("Language updated to:", message.data.language);
+        }
+        
+        // Handle form-specific messages
+        if (message?.data?.msg === 'form-response') {
+          console.log("Form response received:", message.data);
+        }
       });
+      
+      console.log("✅ FormArea server message listener set up successfully");
+    } catch (error) {
+      console.error("Failed to set up FormArea server message listener:", error);
     }
   }, [pipecatClient.client, isConnected]);
 
-  // Enhanced scroll to bottom with better reliability
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'end',
-        inline: 'nearest'
-      });
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
     }
   };
 
-  // Scroll to bottom when messages or active transcripts change
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeTranscripts]);
+  }, [currentQuestionIndex, answers]);
 
-  // Additional scroll with delay to ensure DOM updates
-  useEffect(() => {
-    const timeoutId = setTimeout(scrollToBottom, 150);
-    return () => clearTimeout(timeoutId);
-  }, [messages, activeTranscripts]);
-
-  // Register function handlers when connected
-  useEffect(() => {
-    if (isConnected && isBotReady) {
-      // Register example function call handlers
-      registerFunctionCallHandler('clear_chat', async (params) => {
-        console.log('Function call: clear_chat', params);
-        clearMessages();
-        toast.success('Chat cleared');
-        return { success: true };
-      });
-
-      // Set log level for debugging
-      setLogLevel(3); // INFO level
-    }
-  }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel]);
-
-  // FIXED: Fire-and-forget message sending without loading state
-  const handleSendMessage = async () => {
-    if (!input.trim() || !isConnected || !isBotReady) return;
-
-    const messageContent = input.trim();
-    setInput(''); // Clear input immediately
-
-    // Add user typed message immediately to UI
-    const userMessage: BotMessage = {
-      id: `user-typed-${Date.now()}`,
-      type: 'user',
-      content: messageContent,
-      timestamp: new Date(),
-      source: 'typed'
+  const handleSingleSelect = async (questionId: string, value: string) => {
+    const newAnswers = {
+      ...answers,
+      [questionId]: value
     };
-    setMessages(prev => [...prev, userMessage]);
+    setAnswers(newAnswers);
 
-    try {
-      // Fire-and-forget: Don't await, no loading state
-      appendToContext({
-        role: 'user',
-        content: messageContent,
-        run_immediately: true
-      }).catch((err: any) => {
-        // Only handle actual errors (network failures, etc.)
-        console.error('Failed to send message:', err);
-        toast.error('Failed to send message to bot');
+    // Send answer to Pipecat server if connected
+    if (isConnected && isBotReady) {
+      try {
+        const currentQuestion = questions.find(q => q.id === questionId);
+        const selectedOption = currentQuestion?.options.find(opt => opt.id === value);
         
-        // Optionally show error message in chat
-        const errorMessage: BotMessage = {
-          id: `error-${Date.now()}`,
-          type: 'system',
-          content: 'Failed to send message. Please try again.',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
-      });
-
-      console.log('📤 Message sent to bot:', messageContent);
-      
-    } catch (err: any) {
-      console.error('Unexpected error sending message:', err);
-      toast.error('Unexpected error occurred');
+        sendMessage('form-answer', {
+          questionId,
+          questionText: currentQuestion?.text,
+          answerValue: value,
+          answerLabel: selectedOption?.label,
+          type: 'single'
+        });
+        
+        toast.success("Answer sent to assistant");
+      } catch (err: any) {
+        toast.error("Failed to send answer to assistant");
+      }
     }
   };
 
-  const toggleMic = () => {
-    if (!isConnected) {
-      toast.error('Please connect to bot first');
-      return;
+  const handleMultiSelect = async (questionId: string, optionId: string, checked: boolean) => {
+    const currentAnswers = (answers[questionId] as string[]) || [];
+    let newAnswers;
+    
+    if (checked) {
+      newAnswers = {
+        ...answers,
+        [questionId]: [...currentAnswers, optionId]
+      };
+    } else {
+      newAnswers = {
+        ...answers,
+        [questionId]: currentAnswers.filter(id => id !== optionId)
+      };
     }
     
+    setAnswers(newAnswers);
+
+    // Send updated answers to Pipecat server if connected
+    if (isConnected && isBotReady) {
+      try {
+        const currentQuestion = questions.find(q => q.id === questionId);
+        const selectedOptions = (newAnswers[questionId] as string[])
+          .map(id => currentQuestion?.options.find(opt => opt.id === id)?.label)
+          .filter(Boolean);
+
+        sendMessage('form-answer', {
+          questionId,
+          questionText: currentQuestion?.text,
+          answerValue: newAnswers[questionId],
+          answerLabels: selectedOptions,
+          type: 'multi'
+        });
+        
+        toast.success("Answer updated for assistant");
+      } catch (err: any) {
+        toast.error("Failed to send answer to assistant");
+      }
+    }
+  };
+
+  const handleNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      // Add new question when at the end
+      const newQuestion: Question = {
+        id: `q${Date.now()}`,
+        text: "What development tools do you prefer?",
+        type: "multi",
+        options: [
+          { id: "vscode", label: "VS Code" },
+          { id: "webstorm", label: "WebStorm" },
+          { id: "atom", label: "Atom" },
+          { id: "sublime", label: "Sublime Text" },
+        ],
+      };
+      
+      setQuestions(prev => [...prev, newQuestion]);
+      setCurrentQuestionIndex(prev => prev + 1);
+      toast.success("New question added!");
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
+    }
+  };
+
+  const validateCurrentQuestion = (): boolean => {
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion?.required) return true;
+
+    const answer = answers[currentQuestion.id];
+    if (!answer || (Array.isArray(answer) && answer.length === 0)) {
+      toast.error(`Please answer: ${currentQuestion.text}`);
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateCurrentQuestion()) return;
+
+    setIsLoading(true);
+    
     try {
-      enableMic(!isMicEnabled);
-      toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
+      // Send form data to Pipecat server if connected
+      if (isConnected && isBotReady) {
+        const formData = questions.map(question => ({
+          id: question.id,
+          question: question.text,
+          type: question.type,
+          answer: answers[question.id],
+          answerLabels: question.type === 'multi' 
+            ? (answers[question.id] as string[])?.map(id => 
+                question.options.find(opt => opt.id === id)?.label
+              ).filter(Boolean)
+            : question.options.find(opt => opt.id === answers[question.id])?.label
+        }));
+
+        await sendRequest('form-submit', {
+          formData,
+          timestamp: new Date().toISOString(),
+          totalQuestions: questions.length,
+          answeredQuestions: getAnsweredCount()
+        });
+        
+        toast.success("Form submitted to assistant successfully!");
+      } else {
+        // Simulate API call when not connected
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        toast.success("Form submitted successfully!");
+      }
+      
+      setIsSubmitted(true);
     } catch (err: any) {
-      toast.error('Failed to toggle microphone');
+      toast.error("Failed to submit form. Please try again.");
+      setError("Submission failed");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleClearMessages = () => {
+  const handleReset = () => {
+    setAnswers({});
+    setCurrentQuestionIndex(0);
+    setIsSubmitted(false);
+    setError(null);
+    
+    // Notify assistant about form reset
+    if (isConnected && isBotReady) {
+      sendMessage('form-reset', {
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    toast.success("Form reset");
+  };
+
+  const handleSendToAssistant = async () => {
+    if (!isConnected || !isBotReady) {
+      toast.error("Assistant not connected");
+      return;
+    }
+
     try {
-      clearMessages();
-      toast.success('Chat cleared');
+      const currentQuestion = questions[currentQuestionIndex];
+      await sendRequest('form-question-help', {
+        questionId: currentQuestion.id,
+        questionText: currentQuestion.text,
+        questionType: currentQuestion.type,
+        options: currentQuestion.options,
+        currentAnswer: answers[currentQuestion.id],
+        currentQuestionIndex: currentQuestionIndex + 1,
+        totalQuestions: questions.length
+      });
+      
+      toast.success("Question sent to assistant for help");
     } catch (err: any) {
-      toast.error('Failed to clear messages');
+      toast.error("Failed to get help from assistant");
     }
   };
 
-  const formatTimestamp = (timestamp: Date) => {
-    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const getAnsweredCount = () => {
+    return Object.keys(answers).filter(key => {
+      const answer = answers[key];
+      return answer && (Array.isArray(answer) ? answer.length > 0 : true);
+    }).length;
   };
 
-  const getMessageIcon = (type: BotMessage['type'], source?: string) => {
-    switch (type) {
-      case 'bot': return '🤖';
-      case 'user': return source === 'spoken' ? '🎤' : '👤';
-      case 'system': return '⚙️';
-      default: return '💬';
-    }
-  };
+  if (error) {
+    return (
+      <Card className={className}>
+        <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+          <MessageCircleQuestionMark className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => setError(null)} variant="outline">
+            Try Again
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const getMessageTypeLabel = (type: BotMessage['type'], source?: string) => {
-    switch (type) {
-      case 'bot': return 'Assistant';
-      case 'user': return source === 'spoken' ? 'You (Spoken)' : 'You (Typed)';
-      case 'system': return 'System';
-      default: return 'Message';
-    }
-  };
-
-  // FIXED: Simplified textarea disabled logic - no loading state blocking
-  const isTextareaDisabled = !isConnected || !isBotReady;
-
-  // Convert active transcripts to display format
-  const activeTranscriptEntries = Array.from(activeTranscripts.entries());
+  const currentQuestion = questions[currentQuestionIndex];
+  const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
   return (
-    <Card className={`flex flex-col h-[600px] ${className}`}>
-      <CardHeader className="flex-shrink-0 pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" />
-            Voice Chat Assistant
-          </CardTitle>
-          
+    <Card className={`h-full flex flex-col ${className}`}>
+      <CardHeader className="pb-4 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <LayoutList className="h-5 w-5 text-primary" />
+          <div className="flex-1">
+            <CardTitle className="flex items-center gap-2">
+              Interactive Form
+              {isUserSpeaking && <Mic className="w-4 h-4 text-green-600 animate-pulse" />}
+              {isBotSpeaking && <div className="w-4 h-4 bg-blue-600 rounded-full animate-pulse" />}
+            </CardTitle>
+            <CardDescription>
+              Question {currentQuestionIndex + 1} of {questions.length}
+            </CardDescription>
+          </div>
           <div className="flex items-center gap-2">
-            {/* Mic Toggle */}
-            <Button
-              variant={isMicEnabled ? "default" : "outline"}
-              size="sm"
-              onClick={toggleMic}
-              disabled={!isConnected || !isBotReady}
-              className="gap-2"
-            >
-              {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              {isMicEnabled ? 'Mic On' : 'Mic Off'}
-            </Button>
-
-            {/* Status Indicators */}
-            <div className="flex items-center gap-1">
-              {isBotSpeaking && (
-                <Badge variant="secondary" className="text-blue-600 animate-pulse">
-                  🗣️ Bot Speaking
-                </Badge>
-              )}
-              {isUserSpeaking && (
-                <Badge variant="secondary" className="text-green-600 animate-pulse">
-                  🎤 Listening
-                </Badge>
-              )}
-              {isConnected && isBotReady && (
-                <Badge variant="default" className="text-green-600">
-                  ✅ Ready
-                </Badge>
-              )}
-              {isConnected && !isBotReady && (
-                <Badge variant="outline" className="text-amber-600">
-                  ⏳ Connecting
-                </Badge>
-              )}
-              {!isConnected && (
-                <Badge variant="outline" className="text-muted-foreground">
-                  ⚡ Disconnected
-                </Badge>
-              )}
+            <div className="text-sm text-muted-foreground">
+              {getAnsweredCount()}/{questions.length} answered
             </div>
+            {isConnected && isBotReady && (
+              <Badge variant="secondary" className="text-xs">
+                Assistant Ready
+              </Badge>
+            )}
           </div>
         </div>
-
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-            <div className="font-medium">Error:</div>
-            <div className="mt-1">{error}</div>
-          </div>
-        )}
       </CardHeader>
 
-      <Separator />
-
-      <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
-        {/* Messages - Fixed height with scroll */}
-        <div className="flex-1 mb-4 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="space-y-4 pr-4">
-              {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  {isConnected ? (
-                    isBotReady ? (
-                      <>
-                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-base font-medium">Start a conversation</p>
-                        <p className="text-sm mt-2">
-                          You can speak directly using the microphone or type messages below
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                        <p>Assistant is connecting...</p>
-                      </>
-                    )
-                  ) : (
-                    <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p className="text-base font-medium">Connect to start chatting</p>
-                      <p className="text-sm mt-2">
-                        Use the Connect button to start your conversation
-                      </p>
-                    </>
-                  )}
+      <CardContent className="p-0 flex flex-col flex-1 min-h-0">
+        <ScrollArea ref={scrollAreaRef} className="flex-1 px-6">
+          <div className="py-6">
+            {isLoading && (
+              <div className="space-y-3">
+                <div className="h-4 bg-muted rounded animate-pulse" />
+                <div className="space-y-2">
+                  {[1, 2, 3].map((j) => (
+                    <div key={j} className="h-8 bg-muted/60 rounded animate-pulse" />
+                  ))}
                 </div>
-              ) : (
-                <>
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${
-                        message.type === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {message.type !== 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                      
-                      <div
-                        className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                          message.type === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : message.type === 'system'
-                            ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                            : 'bg-muted border'
-                        }`}
+              </div>
+            )}
+
+            {!isLoading && questions.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <MessageCircleQuestionMark className="h-16 w-16 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Questions Available</h3>
+                <p className="text-muted-foreground mb-6">
+                  Get started by adding your first question
+                </p>
+                <Button onClick={handleNext}>
+                  Add First Question
+                </Button>
+              </div>
+            )}
+
+            {!isLoading && currentQuestion && (
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
+                      {currentQuestionIndex + 1}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <Label className="text-lg font-semibold leading-relaxed">
+                          {currentQuestion.text}
+                          {currentQuestion.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        {isConnected && isBotReady && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSendToAssistant}
+                            className="gap-1 text-xs"
+                          >
+                            <Send className="w-3 h-3" />
+                            Ask Assistant
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="ml-11">
+                    {currentQuestion.type === "single" ? (
+                      <RadioGroup
+                        value={answers[currentQuestion.id] as string || ""}
+                        onValueChange={(value) => handleSingleSelect(currentQuestion.id, value)}
+                        className="space-y-3"
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            {getMessageTypeLabel(message.type, message.source)}
-                          </span>
-                          <span className="text-xs opacity-60">
-                            {formatTimestamp(message.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
-                      </div>
-
-                      {message.type === 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  
-                  {/* Active Interim Transcripts */}
-                  {activeTranscriptEntries.map(([userId, text]) => (
-                    <div key={`interim-${userId}`} className="flex gap-3 justify-end">
-                      <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            You (Speaking...)
-                          </span>
-                          <div className="flex gap-1">
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                        {currentQuestion.options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-3">
+                            <RadioGroupItem value={option.id} id={`${currentQuestion.id}-${option.id}`} />
+                            <Label
+                              htmlFor={`${currentQuestion.id}-${option.id}`}
+                              className="flex-1 py-3 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 data-[state=checked]:bg-primary/10 data-[state=checked]:border-primary text-base"
+                            >
+                              {option.label}
+                            </Label>
                           </div>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
-                          {text}
-                        </p>
+                        ))}
+                      </RadioGroup>
+                    ) : (
+                      <div className="space-y-3">
+                        {currentQuestion.options.map((option) => {
+                          const isChecked = ((answers[currentQuestion.id] as string[]) || []).includes(option.id);
+                          return (
+                            <div key={option.id} className="flex items-center space-x-3">
+                              <Checkbox
+                                id={`${currentQuestion.id}-${option.id}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => 
+                                  handleMultiSelect(currentQuestion.id, option.id, checked as boolean)
+                                }
+                              />
+                              <Label
+                                htmlFor={`${currentQuestion.id}-${option.id}`}
+                                className={`flex-1 py-3 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 text-base ${
+                                  isChecked ? 'bg-primary/10 border-primary' : ''
+                                }`}
+                              >
+                                {option.label}
+                              </Label>
+                            </div>
+                          );
+                        })}
                       </div>
-                      
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
-                        🎤
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-        </div>
+                    )}
+                  </div>
+                </div>
 
-        {/* Input Area */}
-        <Separator className="mb-4" />
-        <div className="space-y-3 flex-shrink-0">
-          <div className="flex gap-2">
-            <Textarea
-              placeholder={
-                !isConnected
-                  ? "Connect to start typing..." 
-                  : !isBotReady
-                  ? "Waiting for assistant to be ready..."
-                  : "Type your message here..."
-              }
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              disabled={isTextareaDisabled}
-              className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
-                isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            />
-            
-            <Button
-              onClick={handleSendMessage}
-              disabled={!input.trim() || isTextareaDisabled}
-              size="sm"
-              className="gap-2 h-fit self-end"
-            >
-              <CornerDownLeft className="w-4 h-4" />
-              Send
-            </Button>
+                {isSubmitted && (
+                  <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-green-800 font-medium">
+                      ✓ Form submitted successfully! {isConnected && isBotReady ? "Data sent to assistant." : "Thank you for your responses."}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+        </ScrollArea>
 
-          <div className="flex justify-between items-center text-xs">
-            <div className="text-muted-foreground">
-              {!isConnected ? (
-                <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
-              ) : !isBotReady ? (
-                <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
-              ) : isUserSpeaking ? (
-                <span className="text-green-600 font-medium">🎤 Voice input detected</span>
-              ) : activeTranscriptEntries.length > 0 ? (
-                <span className="text-green-600 font-medium">💬 Processing speech...</span>
+        <div className="border-t bg-card p-6 space-y-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrevious}
+                disabled={currentQuestionIndex === 0 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              
+              {!isLastQuestion ? (
+                <Button
+                  onClick={handleNext}
+                  size="sm"
+                  disabled={isLoading}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
               ) : (
-                <span>💬 Press Enter to send • Shift + Enter for new line</span>
+                <Button
+                  onClick={handleNext}
+                  variant="outline"
+                  size="sm"
+                  disabled={isLoading}
+                >
+                  Add Question
+                </Button>
               )}
             </div>
 
             <Button
-              onClick={handleClearMessages}
-              disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
-              variant="outline"
+              variant="ghost"
               size="sm"
+              onClick={handleReset}
+              disabled={isLoading}
             >
-              Clear Chat
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Reset
             </Button>
           </div>
+          
+          <div className="flex gap-3">
+            {isLastQuestion && (
+              <Button
+                onClick={handleSubmit}
+                className="w-full"
+                disabled={isLoading || questions.length === 0}
+              >
+                {isLoading ? "Submitting..." : isConnected && isBotReady ? "Submit to Assistant" : "Submit Form"}
+              </Button>
+            )}
+          </div>
+          
+          {isConnected && isBotReady && (
+            <p className="text-xs text-muted-foreground text-center">
+              Your answers are automatically shared with the voice assistant
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
