@@ -222,11 +222,11 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
     actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
 
-    console.log(`✅ Monitoring ONLY RTVIEvent.ServerMessage events in console`);
+    console.log(`✅ Monitoring ONLY events for chat functionality`);
 
     // Cleanup event listeners
     return () => {
-      console.log("🧹 Cleaning up ServerMessage event listener...");
+      console.log("🧹 Cleaning up event listeners...");
       if (typeof actualClient.off === 'function') {
         actualClient.off(RTVIEvent.ServerMessage, handleServerMessage);
         actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
