@@ -236,24 +236,24 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   useEffect(() => {
     const scrollToBottom = () => {
       if (messagesEndRef.current) {
+        // Use instant scroll for immediate feedback
         messagesEndRef.current.scrollIntoView({ 
-          behavior: 'smooth',
+          behavior: 'instant',
           block: 'end',
           inline: 'nearest'
         });
       }
     };
 
-    // Small delay to ensure DOM updates
-    const timeoutId = setTimeout(scrollToBottom, 100);
-    return () => clearTimeout(timeoutId);
-  }, [messages]);
+    // Immediate scroll without delay for better UX
+    scrollToBottom();
+  }, [messages, activeTranscripts]);
 
   // Scroll console when server messages change
   useEffect(() => {
     if (showConsole && consoleEndRef.current) {
       consoleEndRef.current.scrollIntoView({ 
-        behavior: 'smooth',
+        behavior: 'instant',
         block: 'end',
         inline: 'nearest'
       });
