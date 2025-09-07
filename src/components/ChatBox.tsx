@@ -424,287 +424,289 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const activeTranscriptEntries = Array.from(activeTranscripts.entries());
 
   return (
-    <div className={`h-full grid ${showConsole ? 'grid-rows-[1fr_240px]' : 'grid-rows-[1fr]'} gap-2 ${className}`}>
-      {/* Main Chat Card with fixed height structure */}
-      <Card className="flex flex-col h-full">
-        <CardHeader className="flex-shrink-0 pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Voice Chat Assistant
-            </CardTitle>
-            
-            <div className="flex items-center gap-2">
-              {/* Console Toggle */}
-              <Button
-                variant={showConsole ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowConsole(!showConsole)}
-                className="gap-2"
-              >
-                {showConsole ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                Console
-              </Button>
+    <div className={`${showConsole ? 'h-[600px]' : 'h-[500px]'} flex flex-col ${className}`}>
+      {/* Fixed Height Container with Scroll */}
+      <div className="h-full overflow-auto">
+        <Card className="flex flex-col h-full">
+          <CardHeader className="flex-shrink-0 pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MessageSquare className="w-5 h-5" />
+                Voice Chat Assistant
+              </CardTitle>
+              
+              <div className="flex items-center gap-2">
+                {/* Console Toggle */}
+                <Button
+                  variant={showConsole ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowConsole(!showConsole)}
+                  className="gap-2"
+                >
+                  {showConsole ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  Console
+                </Button>
 
-              {/* Mic Toggle */}
-              <Button
-                variant={isMicEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={toggleMic}
-                disabled={!isConnected || !isBotReady}
-                className="gap-2"
-              >
-                {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                {isMicEnabled ? 'Mic On' : 'Mic Off'}
-              </Button>
+                {/* Mic Toggle */}
+                <Button
+                  variant={isMicEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleMic}
+                  disabled={!isConnected || !isBotReady}
+                  className="gap-2"
+                >
+                  {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                  {isMicEnabled ? 'Mic On' : 'Mic Off'}
+                </Button>
 
-              {/* Status Indicators */}
-              <div className="flex items-center gap-1">
-                {isBotSpeaking && (
-                  <Badge variant="secondary" className="text-blue-600 animate-pulse">
-                    🗣️ Bot Speaking
-                  </Badge>
-                )}
-                {isUserSpeaking && (
-                  <Badge variant="secondary" className="text-green-600 animate-pulse">
-                    🎤 Listening
-                  </Badge>
-                )}
-                {isConnected && isBotReady && (
-                  <Badge variant="default" className="text-green-600">
-                    ✅ Ready
-                  </Badge>
-                )}
-                {isConnected && !isBotReady && (
-                  <Badge variant="outline" className="text-amber-600">
-                    ⏳ Connecting
-                  </Badge>
-                )}
-                {!isConnected && (
-                  <Badge variant="outline" className="text-muted-foreground">
-                    ⚡ Disconnected
-                  </Badge>
-                )}
+                {/* Status Indicators */}
+                <div className="flex items-center gap-1">
+                  {isBotSpeaking && (
+                    <Badge variant="secondary" className="text-blue-600 animate-pulse">
+                      🗣️ Bot Speaking
+                    </Badge>
+                  )}
+                  {isUserSpeaking && (
+                    <Badge variant="secondary" className="text-green-600 animate-pulse">
+                      🎤 Listening
+                    </Badge>
+                  )}
+                  {isConnected && isBotReady && (
+                    <Badge variant="default" className="text-green-600">
+                      ✅ Ready
+                    </Badge>
+                  )}
+                  {isConnected && !isBotReady && (
+                    <Badge variant="outline" className="text-amber-600">
+                      ⏳ Connecting
+                    </Badge>
+                  )}
+                  {!isConnected && (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      ⚡ Disconnected
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-              <div className="font-medium">Error:</div>
-              <div className="mt-1">{error}</div>
-            </div>
-          )}
-        </CardHeader>
+            {error && (
+              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+                <div className="font-medium">Error:</div>
+                <div className="mt-1">{error}</div>
+              </div>
+            )}
+          </CardHeader>
 
-        <Separator />
+          <Separator />
 
-        <CardContent className="flex-1 p-4 flex flex-col min-h-0">
-          {/* Messages Area - Scrollable with manual control */}
-          <div 
-            ref={messagesContainerRef}
-            className="flex-1 overflow-auto mb-4 border rounded-lg p-3" 
-            onScroll={handleMessagesScroll}
-          >
-            <div className="space-y-4">
-              {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  {isConnected ? (
-                    isBotReady ? (
-                      <>
-                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-base font-medium">Start a conversation</p>
-                        <p className="text-sm mt-2">
-                          You can speak directly using the microphone or type messages below
-                        </p>
-                      </>
+          <CardContent className="flex-1 p-4 flex flex-col min-h-0">
+            {/* Messages Area - Scrollable with manual control */}
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 overflow-auto mb-4 border rounded-lg p-3" 
+              onScroll={handleMessagesScroll}
+            >
+              <div className="space-y-4">
+                {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    {isConnected ? (
+                      isBotReady ? (
+                        <>
+                          <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-base font-medium">Start a conversation</p>
+                          <p className="text-sm mt-2">
+                            You can speak directly using the microphone or type messages below
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                          <p>Assistant is connecting...</p>
+                        </>
+                      )
                     ) : (
                       <>
-                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                        <p>Assistant is connecting...</p>
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-base font-medium">Connect to start chatting</p>
+                        <p className="text-sm mt-2">
+                          Use the Connect button to start your conversation
+                        </p>
                       </>
-                    )
-                  ) : (
-                    <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p className="text-base font-medium">Connect to start chatting</p>
-                      <p className="text-sm mt-2">
-                        Use the Connect button to start your conversation
-                      </p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${
-                        message.type === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {message.type !== 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                      
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {messages.map((message) => (
                       <div
-                        className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                          message.type === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : message.type === 'system'
-                            ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                            : 'bg-muted border'
+                        key={message.id}
+                        className={`flex gap-3 ${
+                          message.type === 'user' ? 'justify-end' : 'justify-start'
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            {getMessageTypeLabel(message.type, message.source)}
-                          </span>
-                          <span className="text-xs opacity-60">
-                            {formatTimestamp(message.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
-                      </div>
-
-                      {message.type === 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  
-                  {/* Active Interim Transcripts */}
-                  {activeTranscriptEntries.map(([userId, text]) => (
-                    <div key={`interim-${userId}`} className="flex gap-3 justify-end">
-                      <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            You (Speaking...)
-                          </span>
-                          <div className="flex gap-1">
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                        {message.type !== 'user' && (
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                            {getMessageIcon(message.type, message.source)}
                           </div>
+                        )}
+                        
+                        <div
+                          className={`max-w-[75%] rounded-lg px-4 py-3 ${
+                            message.type === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : message.type === 'system'
+                              ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                              : 'bg-muted border'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium opacity-80">
+                              {getMessageTypeLabel(message.type, message.source)}
+                            </span>
+                            <span className="text-xs opacity-60">
+                              {formatTimestamp(message.timestamp)}
+                            </span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                            {message.content}
+                          </p>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
-                          {text}
-                        </p>
-                      </div>
-                      
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
-                        🎤
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
 
-          {/* Scroll indicator when user has scrolled up */}
-          {isUserScrolling && (
-            <div className="flex justify-center mb-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsUserScrolling(false);
-                  messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="text-xs gap-1"
-              >
-                ↓ New messages below
-              </Button>
+                        {message.type === 'user' && (
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                            {getMessageIcon(message.type, message.source)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {/* Active Interim Transcripts */}
+                    {activeTranscriptEntries.map(([userId, text]) => (
+                      <div key={`interim-${userId}`} className="flex gap-3 justify-end">
+                        <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium opacity-80">
+                              You (Speaking...)
+                            </span>
+                            <div className="flex gap-1">
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                            </div>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
+                            {text}
+                          </p>
+                        </div>
+                        
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
+                          🎤
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
             </div>
-          )}
 
-          {/* Input Area - Fixed at bottom */}
-          <div className="flex-shrink-0">
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder={
-                    !isConnected
-                      ? "Connect to start typing..." 
-                      : !isBotReady
-                      ? "Waiting for assistant to be ready..."
-                      : "Type your message here..."
-                  }
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  disabled={isTextareaDisabled}
-                  className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
-                    isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                />
-                
+            {/* Scroll indicator when user has scrolled up */}
+            {isUserScrolling && (
+              <div className="flex justify-center mb-2">
                 <Button
-                  onClick={handleSendMessage}
-                  disabled={!input.trim() || isTextareaDisabled}
+                  variant="outline"
                   size="sm"
-                  className="gap-2 h-fit self-end"
+                  onClick={() => {
+                    setIsUserScrolling(false);
+                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="text-xs gap-1"
                 >
-                  <CornerDownLeft className="w-4 h-4" />
-                  Send
+                  ↓ New messages below
                 </Button>
               </div>
+            )}
 
-              <div className="flex justify-between items-center text-xs">
-                <div className="text-muted-foreground">
-                  {!isConnected ? (
-                    <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
-                  ) : !isBotReady ? (
-                    <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
-                  ) : isUserSpeaking ? (
-                    <span className="text-green-600 font-medium">🎤 Voice input detected</span>
-                  ) : activeTranscriptEntries.length > 0 ? (
-                    <span className="text-green-600 font-medium">💬 Processing speech...</span>
-                  ) : (
-                    <span>💬 Press Enter to send • Shift + Enter for new line</span>
-                  )}
-                </div>
-
+            {/* Input Area - Fixed at bottom */}
+            <div className="flex-shrink-0">
+              <div className="space-y-3">
                 <div className="flex gap-2">
-                  <Button
-                    onClick={addTestMessages}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Test Scroll
-                  </Button>
+                  <Textarea
+                    placeholder={
+                      !isConnected
+                        ? "Connect to start typing..." 
+                        : !isBotReady
+                        ? "Waiting for assistant to be ready..."
+                        : "Type your message here..."
+                    }
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    disabled={isTextareaDisabled}
+                    className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
+                      isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  />
                   
                   <Button
-                    onClick={handleClearMessages}
-                    disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
-                    variant="outline"
+                    onClick={handleSendMessage}
+                    disabled={!input.trim() || isTextareaDisabled}
                     size="sm"
+                    className="gap-2 h-fit self-end"
                   >
-                    Clear Chat
+                    <CornerDownLeft className="w-4 h-4" />
+                    Send
                   </Button>
+                </div>
+
+                <div className="flex justify-between items-center text-xs">
+                  <div className="text-muted-foreground">
+                    {!isConnected ? (
+                      <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
+                    ) : !isBotReady ? (
+                      <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
+                    ) : isUserSpeaking ? (
+                      <span className="text-green-600 font-medium">🎤 Voice input detected</span>
+                    ) : activeTranscriptEntries.length > 0 ? (
+                      <span className="text-green-600 font-medium">💬 Processing speech...</span>
+                    ) : (
+                      <span>💬 Press Enter to send • Shift + Enter for new line</span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={addTestMessages}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Test Scroll
+                    </Button>
+                    
+                    <Button
+                      onClick={handleClearMessages}
+                      disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Clear Chat
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Console Section */}
       {showConsole && (
-        <Card className="flex flex-col">
+        <Card className="flex flex-col h-[240px] mt-2">
           <CardHeader className="flex-shrink-0 pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
