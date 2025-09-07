@@ -11,7 +11,10 @@ import {
   CornerDownLeft, 
   MessageSquare, 
   Mic, 
-  MicOff
+  MicOff,
+  Terminal,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRTVIClientEvent } from "@pipecat-ai/client-react";
@@ -31,13 +34,25 @@ interface BotMessage {
   isFinal?: boolean;
 }
 
+interface ServerMessage {
+  id: string;
+  timestamp: Date;
+  type: string;
+  event?: string;
+  data: any;
+  raw: any;
+}
+
 export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<BotMessage[]>([]);
+  const [serverMessages, setServerMessages] = useState<ServerMessage[]>([]);
+  const [showConsole, setShowConsole] = useState(false);
   // Track active interim transcripts by user_id
   const [activeTranscripts, setActiveTranscripts] = useState<Map<string, string>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
 
   const {
     isConnected,
@@ -56,25 +71,123 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setLogLevel,
   } = pipecatClient;
 
+  // Enhanced server message logger
+  const logServerMessage = useCallback((message: any, context?: string) => {
+    const serverMessage: ServerMessage = {
+      id: `server-${Date.now()}-${Math.random()}`,
+      timestamp: new Date(),
+      type: context || 'unknown',
+      event: message?.type || message?.event || 'unknown',
+      data: message,
+      raw: message
+    };
+
+    setServerMessages(prev => [...prev, serverMessage]);
+
+    // Enhanced console logging with structured format
+    const logStyle = {
+      timestamp: new Date().toISOString(),
+      context: context || 'SERVER_MESSAGE',
+      event: message?.type || message?.event || 'unknown',
+      message: message
+    };
+
+    console.group(`🌐 ${logStyle.context} - ${logStyle.event}`);
+    console.log(`⏰ Timestamp: ${logStyle.timestamp}`);
+    console.log(`📝 Event Type: ${logStyle.event}`);
+    console.log(`📦 Full Message:`, message);
+    
+    // Log specific important fields if they exist
+    if (message?.text) {
+      console.log(`💬 Text Content: "${message.text}"`);
+    }
+    if (message?.final !== undefined) {
+      console.log(`✅ Is Final: ${message.final}`);
+    }
+    if (message?.user_id) {
+      console.log(`👤 User ID: ${message.user_id}`);
+    }
+    if (message?.participant) {
+      console.log(`👥 Participant:`, message.participant);
+    }
+    if (message?.data) {
+      console.log(`📊 Data:`, message.data);
+    }
+    if (message?.error) {
+      console.error(`❌ Error:`, message.error);
+    }
+    
+    console.groupEnd();
+  }, []);
+
   // Clear messages function
   const clearMessages = useCallback(() => {
     setMessages([]);
     setActiveTranscripts(new Map());
   }, []);
 
-  // Set up event listeners for user and bot transcripts
+  // Clear server console
+  const clearServerMessages = useCallback(() => {
+    setServerMessages([]);
+    console.clear();
+    console.log('🧹 Server message console cleared');
+  }, []);
+
+  // Set up comprehensive event listeners
   useEffect(() => {
-    // Access the actual PipecatClient instance from the hook
     const actualClient = pipecatClient.client;
     
     if (!actualClient || typeof actualClient.on !== 'function') {
-      console.warn("PipecatClient not available or doesn't have .on() method");
+      console.warn("❌ PipecatClient not available or doesn't have .on() method");
       return;
     }
 
+    console.log("🔌 Setting up comprehensive event listeners...");
+
+    // List of all possible RTVI events to monitor
+    const eventsToMonitor = [
+      RTVIEvent.Connected,
+      RTVIEvent.Disconnected,
+      RTVIEvent.TransportStateChanged,
+      RTVIEvent.Config,
+      RTVIEvent.ConfigDescribe,
+      RTVIEvent.ActionsAvailable,
+      RTVIEvent.BotConnected,
+      RTVIEvent.BotDisconnected,
+      RTVIEvent.BotReady,
+      RTVIEvent.UserTranscript,
+      RTVIEvent.BotTranscript,
+      RTVIEvent.BotLlmText,
+      RTVIEvent.BotLlmStarted,
+      RTVIEvent.BotLlmStopped,
+      RTVIEvent.BotTtsText,
+      RTVIEvent.BotTtsStarted,
+      RTVIEvent.BotTtsStopped,
+      RTVIEvent.UserStartedSpeaking,
+      RTVIEvent.UserStoppedSpeaking,
+      RTVIEvent.BotStartedSpeaking,
+      RTVIEvent.BotStoppedSpeaking,
+      RTVIEvent.TrackStarted,
+      RTVIEvent.TrackStopped,
+      RTVIEvent.Error,
+      RTVIEvent.MessageError,
+      RTVIEvent.DeviceError
+    ];
+
+    // Create handlers for all events
+    const eventHandlers: { [key: string]: (data: any) => void } = {};
+
+    eventsToMonitor.forEach(eventType => {
+      eventHandlers[eventType] = (data: any) => {
+        logServerMessage(data, `RTVI_EVENT_${eventType}`);
+      };
+      
+      actualClient.on(eventType, eventHandlers[eventType]);
+    });
+
     // Handler for user transcription events - BOTH interim and final
     const handleUserTranscript = (data: any) => {
-      console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
+      logServerMessage(data, "USER_TRANSCRIPT");
       
       const transcriptText = data?.text || "";
       const isFinal = data?.final ?? false;
@@ -118,7 +231,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
     // Handler for bot transcription (what the bot says) - AGGREGATED
     const handleBotTranscript = (data: any) => {
-      console.log("🤖 Bot transcription event:", JSON.stringify(data, null, 2));
+      logServerMessage(data, "BOT_TRANSCRIPT");
       
       const transcriptText = data?.text || "";
       
@@ -137,27 +250,61 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       }
     };
 
-    // Add event listeners using the actual client's .on() method
+    // Override specific handlers for transcript events to maintain chat functionality
     actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
     actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
 
+    console.log(`✅ Monitoring ${eventsToMonitor.length} RTVI events`);
+
     // Cleanup event listeners
     return () => {
+      console.log("🧹 Cleaning up event listeners...");
+      eventsToMonitor.forEach(eventType => {
+        if (typeof actualClient.off === 'function') {
+          actualClient.off(eventType, eventHandlers[eventType]);
+        }
+      });
+      
       if (typeof actualClient.off === 'function') {
         actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
         actualClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
       }
     };
-  }, [pipecatClient.client]);
+  }, [pipecatClient.client, logServerMessage]);
 
-  // Add this useEffect to log all server messages
+  // Enhanced server message monitoring
   useEffect(() => {
     if (pipecatClient.client && isConnected) {
-      pipecatClient.client.onServerMessage((message) => {
-        console.log("📨 RTVI Server Message:", message);
-      });
+      console.log("🔍 Setting up comprehensive server message monitoring...");
+      
+      // Monitor all server messages through onServerMessage if available
+      if (typeof pipecatClient.client.onServerMessage === 'function') {
+        pipecatClient.client.onServerMessage((message: any) => {
+          logServerMessage(message, "SERVER_MESSAGE");
+        });
+        console.log("✅ Server message monitoring active");
+      } else {
+        console.warn("❌ onServerMessage not available on client");
+      }
+
+      // Also try to monitor transport-level messages if possible
+      if (pipecatClient.client.transport && typeof pipecatClient.client.transport.on === 'function') {
+        const transport = pipecatClient.client.transport;
+        
+        const transportMessageHandler = (message: any) => {
+          logServerMessage(message, "TRANSPORT_MESSAGE");
+        };
+
+        transport.on('message', transportMessageHandler);
+        
+        return () => {
+          if (typeof transport.off === 'function') {
+            transport.off('message', transportMessageHandler);
+          }
+        };
+      }
     }
-  }, [pipecatClient.client, isConnected]);
+  }, [pipecatClient.client, isConnected, logServerMessage]);
 
   // Enhanced scroll to bottom with better reliability
   const scrollToBottom = () => {
@@ -170,10 +317,27 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   };
 
+  const scrollConsoleToBottom = () => {
+    if (consoleEndRef.current) {
+      consoleEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
+      });
+    }
+  };
+
   // Scroll to bottom when messages or active transcripts change
   useEffect(() => {
     scrollToBottom();
   }, [messages, activeTranscripts]);
+
+  // Scroll console when server messages change
+  useEffect(() => {
+    if (showConsole) {
+      scrollConsoleToBottom();
+    }
+  }, [serverMessages, showConsole]);
 
   // Additional scroll with delay to ensure DOM updates
   useEffect(() => {
@@ -187,6 +351,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       // Register example function call handlers
       registerFunctionCallHandler('clear_chat', async (params) => {
         console.log('Function call: clear_chat', params);
+        logServerMessage({ type: 'function_call', name: 'clear_chat', params }, 'FUNCTION_CALL');
         clearMessages();
         toast.success('Chat cleared');
         return { success: true };
@@ -194,8 +359,9 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
       // Set log level for debugging
       setLogLevel(3); // INFO level
+      console.log("🔧 Function handlers registered and log level set");
     }
-  }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel]);
+  }, [isConnected, isBotReady, registerFunctionCallHandler, clearMessages, setLogLevel, logServerMessage]);
 
   // FIXED: Fire-and-forget message sending without loading state
   const handleSendMessage = async () => {
@@ -214,6 +380,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     };
     setMessages(prev => [...prev, userMessage]);
 
+    // Log the outgoing message
+    logServerMessage({
+      type: 'outgoing_user_message',
+      content: messageContent,
+      source: 'typed',
+      timestamp: new Date().toISOString()
+    }, 'OUTGOING_MESSAGE');
+
     try {
       // Fire-and-forget: Don't await, no loading state
       appendToContext({
@@ -223,6 +397,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       }).catch((err: any) => {
         // Only handle actual errors (network failures, etc.)
         console.error('Failed to send message:', err);
+        logServerMessage({ error: err, context: 'send_message_failed' }, 'ERROR');
         toast.error('Failed to send message to bot');
         
         // Optionally show error message in chat
@@ -239,6 +414,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       
     } catch (err: any) {
       console.error('Unexpected error sending message:', err);
+      logServerMessage({ error: err, context: 'unexpected_send_error' }, 'ERROR');
       toast.error('Unexpected error occurred');
     }
   };
@@ -251,8 +427,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     
     try {
       enableMic(!isMicEnabled);
+      logServerMessage({
+        type: 'mic_toggle',
+        enabled: !isMicEnabled,
+        timestamp: new Date().toISOString()
+      }, 'USER_ACTION');
       toast.info(isMicEnabled ? 'Microphone disabled' : 'Microphone enabled');
     } catch (err: any) {
+      logServerMessage({ error: err, context: 'mic_toggle_failed' }, 'ERROR');
       toast.error('Failed to toggle microphone');
     }
   };
@@ -260,6 +442,10 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const handleClearMessages = () => {
     try {
       clearMessages();
+      logServerMessage({
+        type: 'chat_cleared',
+        timestamp: new Date().toISOString()
+      }, 'USER_ACTION');
       toast.success('Chat cleared');
     } catch (err: any) {
       toast.error('Failed to clear messages');
@@ -267,7 +453,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   };
 
   const formatTimestamp = (timestamp: Date) => {
-    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   const getMessageIcon = (type: BotMessage['type'], source?: string) => {
@@ -288,6 +474,29 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     }
   };
 
+  const getServerMessageTypeColor = (type: string) => {
+    const colorMap: { [key: string]: string } = {
+      'USER_TRANSCRIPT': 'text-blue-600',
+      'BOT_TRANSCRIPT': 'text-green-600',
+      'SERVER_MESSAGE': 'text-purple-600',
+      'RTVI_EVENT': 'text-orange-600',
+      'TRANSPORT_MESSAGE': 'text-cyan-600',
+      'FUNCTION_CALL': 'text-indigo-600',
+      'OUTGOING_MESSAGE': 'text-teal-600',
+      'USER_ACTION': 'text-amber-600',
+      'ERROR': 'text-red-600'
+    };
+    
+    // Check if type starts with any known prefix
+    for (const [prefix, color] of Object.entries(colorMap)) {
+      if (type.startsWith(prefix)) {
+        return color;
+      }
+    }
+    
+    return 'text-gray-600';
+  };
+
   // FIXED: Simplified textarea disabled logic - no loading state blocking
   const isTextareaDisabled = !isConnected || !isBotReady;
 
@@ -295,239 +504,342 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const activeTranscriptEntries = Array.from(activeTranscripts.entries());
 
   return (
-    <Card className={`flex flex-col h-[600px] ${className}`}>
-      <CardHeader className="flex-shrink-0 pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" />
-            Voice Chat Assistant
-          </CardTitle>
-          
-          <div className="flex items-center gap-2">
-            {/* Mic Toggle */}
-            <Button
-              variant={isMicEnabled ? "default" : "outline"}
-              size="sm"
-              onClick={toggleMic}
-              disabled={!isConnected || !isBotReady}
-              className="gap-2"
-            >
-              {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              {isMicEnabled ? 'Mic On' : 'Mic Off'}
-            </Button>
+    <div className={`space-y-4 ${className}`}>
+      {/* Main Chat Card */}
+      <Card className="flex flex-col h-[600px]">
+        <CardHeader className="flex-shrink-0 pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Voice Chat Assistant
+            </CardTitle>
+            
+            <div className="flex items-center gap-2">
+              {/* Console Toggle */}
+              <Button
+                variant={showConsole ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowConsole(!showConsole)}
+                className="gap-2"
+              >
+                {showConsole ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                Console
+              </Button>
 
-            {/* Status Indicators */}
-            <div className="flex items-center gap-1">
-              {isBotSpeaking && (
-                <Badge variant="secondary" className="text-blue-600 animate-pulse">
-                  🗣️ Bot Speaking
-                </Badge>
-              )}
-              {isUserSpeaking && (
-                <Badge variant="secondary" className="text-green-600 animate-pulse">
-                  🎤 Listening
-                </Badge>
-              )}
-              {isConnected && isBotReady && (
-                <Badge variant="default" className="text-green-600">
-                  ✅ Ready
-                </Badge>
-              )}
-              {isConnected && !isBotReady && (
-                <Badge variant="outline" className="text-amber-600">
-                  ⏳ Connecting
-                </Badge>
-              )}
-              {!isConnected && (
-                <Badge variant="outline" className="text-muted-foreground">
-                  ⚡ Disconnected
-                </Badge>
-              )}
+              {/* Mic Toggle */}
+              <Button
+                variant={isMicEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={toggleMic}
+                disabled={!isConnected || !isBotReady}
+                className="gap-2"
+              >
+                {isMicEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                {isMicEnabled ? 'Mic On' : 'Mic Off'}
+              </Button>
+
+              {/* Status Indicators */}
+              <div className="flex items-center gap-1">
+                {isBotSpeaking && (
+                  <Badge variant="secondary" className="text-blue-600 animate-pulse">
+                    🗣️ Bot Speaking
+                  </Badge>
+                )}
+                {isUserSpeaking && (
+                  <Badge variant="secondary" className="text-green-600 animate-pulse">
+                    🎤 Listening
+                  </Badge>
+                )}
+                {isConnected && isBotReady && (
+                  <Badge variant="default" className="text-green-600">
+                    ✅ Ready
+                  </Badge>
+                )}
+                {isConnected && !isBotReady && (
+                  <Badge variant="outline" className="text-amber-600">
+                    ⏳ Connecting
+                  </Badge>
+                )}
+                {!isConnected && (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    ⚡ Disconnected
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-            <div className="font-medium">Error:</div>
-            <div className="mt-1">{error}</div>
-          </div>
-        )}
-      </CardHeader>
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+              <div className="font-medium">Error:</div>
+              <div className="mt-1">{error}</div>
+            </div>
+          )}
+        </CardHeader>
 
-      <Separator />
+        <Separator />
 
-      <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
-        {/* Messages - Fixed height with scroll */}
-        <div className="flex-1 mb-4 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="space-y-4 pr-4">
-              {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  {isConnected ? (
-                    isBotReady ? (
-                      <>
-                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-base font-medium">Start a conversation</p>
-                        <p className="text-sm mt-2">
-                          You can speak directly using the microphone or type messages below
-                        </p>
-                      </>
+        <CardContent className="flex-1 p-4 min-h-0 flex flex-col">
+          {/* Messages - Fixed height with scroll */}
+          <div className="flex-1 mb-4 min-h-0">
+            <ScrollArea className="h-full">
+              <div className="space-y-4 pr-4">
+                {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    {isConnected ? (
+                      isBotReady ? (
+                        <>
+                          <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-base font-medium">Start a conversation</p>
+                          <p className="text-sm mt-2">
+                      Server messages will appear here when the bot is connected
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {serverMessages.map((serverMessage) => (
+                      <div
+                        key={serverMessage.id}
+                        className="border rounded-lg p-3 bg-muted/30 font-mono text-xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${getServerMessageTypeColor(serverMessage.type)}`}
+                            >
+                              {serverMessage.type}
+                            </Badge>
+                            {serverMessage.event && (
+                              <Badge variant="secondary" className="text-xs">
+                                {serverMessage.event}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground">
+                            {formatTimestamp(serverMessage.timestamp)}
+                          </span>
+                        </div>
+                        
+                        <div className="bg-black/10 rounded p-2 overflow-x-auto">
+                          <pre className="text-xs whitespace-pre-wrap">
+                            {JSON.stringify(serverMessage.raw, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div ref={consoleEndRef} />
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}-2">
+                            You can speak directly using the microphone or type messages below
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                          <p>Assistant is connecting...</p>
+                        </>
+                      )
                     ) : (
                       <>
-                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                        <p>Assistant is connecting...</p>
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-base font-medium">Connect to start chatting</p>
+                        <p className="text-sm mt-2">
+                          Use the Connect button to start your conversation
+                        </p>
                       </>
-                    )
-                  ) : (
-                    <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p className="text-base font-medium">Connect to start chatting</p>
-                      <p className="text-sm mt-2">
-                        Use the Connect button to start your conversation
-                      </p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${
-                        message.type === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {message.type !== 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                      
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {messages.map((message) => (
                       <div
-                        className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                          message.type === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : message.type === 'system'
-                            ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                            : 'bg-muted border'
+                        key={message.id}
+                        className={`flex gap-3 ${
+                          message.type === 'user' ? 'justify-end' : 'justify-start'
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            {getMessageTypeLabel(message.type, message.source)}
-                          </span>
-                          <span className="text-xs opacity-60">
-                            {formatTimestamp(message.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {message.content}
-                        </p>
-                      </div>
-
-                      {message.type === 'user' && (
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                          {getMessageIcon(message.type, message.source)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  
-                  {/* Active Interim Transcripts */}
-                  {activeTranscriptEntries.map(([userId, text]) => (
-                    <div key={`interim-${userId}`} className="flex gap-3 justify-end">
-                      <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium opacity-80">
-                            You (Speaking...)
-                          </span>
-                          <div className="flex gap-1">
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                        {message.type !== 'user' && (
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                            {getMessageIcon(message.type, message.source)}
                           </div>
+                        )}
+                        
+                        <div
+                          className={`max-w-[75%] rounded-lg px-4 py-3 ${
+                            message.type === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : message.type === 'system'
+                              ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                              : 'bg-muted border'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium opacity-80">
+                              {getMessageTypeLabel(message.type, message.source)}
+                            </span>
+                            <span className="text-xs opacity-60">
+                              {formatTimestamp(message.timestamp)}
+                            </span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                            {message.content}
+                          </p>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
-                          {text}
-                        </p>
-                      </div>
-                      
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
-                        🎤
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-        </div>
 
-        {/* Input Area */}
-        <Separator className="mb-4" />
-        <div className="space-y-3 flex-shrink-0">
-          <div className="flex gap-2">
-            <Textarea
-              placeholder={
-                !isConnected
-                  ? "Connect to start typing..." 
-                  : !isBotReady
-                  ? "Waiting for assistant to be ready..."
-                  : "Type your message here..."
-              }
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
+                        {message.type === 'user' && (
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                            {getMessageIcon(message.type, message.source)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {/* Active Interim Transcripts */}
+                    {activeTranscriptEntries.map(([userId, text]) => (
+                      <div key={`interim-${userId}`} className="flex gap-3 justify-end">
+                        <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium opacity-80">
+                              You (Speaking...)
+                            </span>
+                            <div className="flex gap-1">
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                              <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                            </div>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
+                            {text}
+                          </p>
+                        </div>
+                        
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
+                          🎤
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+          </div>
+
+          {/* Input Area */}
+          <Separator className="mb-4" />
+          <div className="space-y-3 flex-shrink-0">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder={
+                  !isConnected
+                    ? "Connect to start typing..." 
+                    : !isBotReady
+                    ? "Waiting for assistant to be ready..."
+                    : "Type your message here..."
                 }
-              }}
-              disabled={isTextareaDisabled}
-              className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
-                isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            />
-            
-            <Button
-              onClick={handleSendMessage}
-              disabled={!input.trim() || isTextareaDisabled}
-              size="sm"
-              className="gap-2 h-fit self-end"
-            >
-              <CornerDownLeft className="w-4 h-4" />
-              Send
-            </Button>
-          </div>
-
-          <div className="flex justify-between items-center text-xs">
-            <div className="text-muted-foreground">
-              {!isConnected ? (
-                <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
-              ) : !isBotReady ? (
-                <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
-              ) : isUserSpeaking ? (
-                <span className="text-green-600 font-medium">🎤 Voice input detected</span>
-              ) : activeTranscriptEntries.length > 0 ? (
-                <span className="text-green-600 font-medium">💬 Processing speech...</span>
-              ) : (
-                <span>💬 Press Enter to send • Shift + Enter for new line</span>
-              )}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                disabled={isTextareaDisabled}
+                className={`flex-1 min-h-[80px] max-h-[120px] resize-none ${
+                  isTextareaDisabled ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              />
+              
+              <Button
+                onClick={handleSendMessage}
+                disabled={!input.trim() || isTextareaDisabled}
+                size="sm"
+                className="gap-2 h-fit self-end"
+              >
+                <CornerDownLeft className="w-4 h-4" />
+                Send
+              </Button>
             </div>
 
-            <Button
-              onClick={handleClearMessages}
-              disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
-              variant="outline"
-              size="sm"
-            >
-              Clear Chat
-            </Button>
+            <div className="flex justify-between items-center text-xs">
+              <div className="text-muted-foreground">
+                {!isConnected ? (
+                  <span className="text-blue-600 font-medium">🔌 Connect to enable messaging</span>
+                ) : !isBotReady ? (
+                  <span className="text-amber-600 font-medium">⏳ Waiting for assistant...</span>
+                ) : isUserSpeaking ? (
+                  <span className="text-green-600 font-medium">🎤 Voice input detected</span>
+                ) : activeTranscriptEntries.length > 0 ? (
+                  <span className="text-green-600 font-medium">💬 Processing speech...</span>
+                ) : (
+                  <span>💬 Press Enter to send • Shift + Enter for new line</span>
+                )}
+              </div>
+
+              <Button
+                onClick={handleClearMessages}
+                disabled={messages.length === 0 && activeTranscriptEntries.length === 0}
+                variant="outline"
+                size="sm"
+              >
+                Clear Chat
+              </Button>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+        </CardContent>
+      </Card>
+
+      {/* Server Console Card */}
+      {showConsole && (
+        <Card className="h-[400px] flex flex-col">
+          <CardHeader className="flex-shrink-0 pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Terminal className="w-5 h-5" />
+                Server Message Console
+                <Badge variant="outline" className="ml-2">
+                  {serverMessages.length} messages
+                </Badge>
+              </CardTitle>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={clearServerMessages}
+                  disabled={serverMessages.length === 0}
+                  variant="outline"
+                  size="sm"
+                >
+                  Clear Console
+                </Button>
+                
+                <Button
+                  onClick={() => setShowConsole(false)}
+                  variant="outline"
+                  size="sm"
+                >
+                  <EyeOff className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          
+          <Separator />
+          
+          <CardContent className="flex-1 p-4 min-h-0">
+            <ScrollArea className="h-full">
+              <div className="space-y-2 pr-4">
+                {serverMessages.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    <Terminal className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-base font-medium">No server messages yet</p>
+                    <p className="text-sm mt
