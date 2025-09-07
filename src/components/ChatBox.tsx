@@ -430,8 +430,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
   return (
     <div className={`h-full grid ${showConsole ? 'grid-rows-[1fr_240px]' : 'grid-rows-[1fr]'} gap-2 ${className}`}>
-      {/* Main Chat Card - Make the entire card scrollable */}
-      <Card className="flex flex-col min-h-0 overflow-hidden">
+      {/* Main Chat Card with fixed height structure */}
+      <Card className="flex flex-col h-full">
         <CardHeader className="flex-shrink-0 pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -504,113 +504,114 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
 
         <Separator />
 
-        {/* Card content with overflow-auto for native scrolling */}
-        <CardContent className="flex-1 min-h-0 overflow-auto p-4 flex flex-col">
-          {/* Messages Area */}
-          <div className="space-y-4 flex-1">
-            {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                {isConnected ? (
-                  isBotReady ? (
-                    <>
-                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p className="text-base font-medium">Start a conversation</p>
-                      <p className="text-sm mt-2">
-                        You can speak directly using the microphone or type messages below
-                      </p>
-                    </>
+        <CardContent className="flex-1 p-4 flex flex-col min-h-0">
+          {/* Messages Area - Scrollable with fixed height */}
+          <div className="flex-1 overflow-auto mb-4 border rounded-lg p-3">
+            <div className="space-y-4">
+              {messages.length === 0 && activeTranscriptEntries.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  {isConnected ? (
+                    isBotReady ? (
+                      <>
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-base font-medium">Start a conversation</p>
+                        <p className="text-sm mt-2">
+                          You can speak directly using the microphone or type messages below
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                        <p>Assistant is connecting...</p>
+                      </>
+                    )
                   ) : (
                     <>
-                      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                      <p>Assistant is connecting...</p>
+                      <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-base font-medium">Connect to start chatting</p>
+                      <p className="text-sm mt-2">
+                        Use the Connect button to start your conversation
+                      </p>
                     </>
-                  )
-                ) : (
-                  <>
-                    <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-base font-medium">Connect to start chatting</p>
-                    <p className="text-sm mt-2">
-                      Use the Connect button to start your conversation
-                    </p>
-                  </>
-                )}
-              </div>
-            ) : (
-              <>
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex gap-3 ${
-                      message.type === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    {message.type !== 'user' && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                        {getMessageIcon(message.type, message.source)}
-                      </div>
-                    )}
-                    
+                  )}
+                </div>
+              ) : (
+                <>
+                  {messages.map((message) => (
                     <div
-                      className={`max-w-[75%] rounded-lg px-4 py-3 ${
-                        message.type === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : message.type === 'system'
-                          ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
-                          : 'bg-muted border'
+                      key={message.id}
+                      className={`flex gap-3 ${
+                        message.type === 'user' ? 'justify-end' : 'justify-start'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium opacity-80">
-                          {getMessageTypeLabel(message.type, message.source)}
-                        </span>
-                        <span className="text-xs opacity-60">
-                          {formatTimestamp(message.timestamp)}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                        {message.content}
-                      </p>
-                    </div>
-
-                    {message.type === 'user' && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
-                        {getMessageIcon(message.type, message.source)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                
-                {/* Active Interim Transcripts */}
-                {activeTranscriptEntries.map(([userId, text]) => (
-                  <div key={`interim-${userId}`} className="flex gap-3 justify-end">
-                    <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium opacity-80">
-                          You (Speaking...)
-                        </span>
-                        <div className="flex gap-1">
-                          <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
-                          <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                          <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                      {message.type !== 'user' && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm">
+                          {getMessageIcon(message.type, message.source)}
                         </div>
+                      )}
+                      
+                      <div
+                        className={`max-w-[75%] rounded-lg px-4 py-3 ${
+                          message.type === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : message.type === 'system'
+                            ? 'bg-muted/50 text-muted-foreground border border-muted-foreground/20'
+                            : 'bg-muted border'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium opacity-80">
+                            {getMessageTypeLabel(message.type, message.source)}
+                          </span>
+                          <span className="text-xs opacity-60">
+                            {formatTimestamp(message.timestamp)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {message.content}
+                        </p>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
-                        {text}
-                      </p>
+
+                      {message.type === 'user' && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+                          {getMessageIcon(message.type, message.source)}
+                        </div>
+                      )}
                     </div>
-                    
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
-                      🎤
+                  ))}
+                  
+                  {/* Active Interim Transcripts */}
+                  {activeTranscriptEntries.map(([userId, text]) => (
+                    <div key={`interim-${userId}`} className="flex gap-3 justify-end">
+                      <div className="max-w-[75%] rounded-lg px-4 py-3 bg-primary/70 text-primary-foreground border-2 border-primary/30 border-dashed">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium opacity-80">
+                            You (Speaking...)
+                          </span>
+                          <div className="flex gap-1">
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse"></div>
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                            <div className="w-1 h-1 bg-primary-foreground/60 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                          </div>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed italic">
+                          {text}
+                        </p>
+                      </div>
+                      
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/70 border-2 border-primary/30 border-dashed flex items-center justify-center text-primary-foreground text-sm">
+                        🎤
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </>
-            )}
-            <div ref={messagesEndRef} />
+                  ))}
+                </>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
 
-          {/* Input Area - Sticky at bottom */}
-          <div className="border-t pt-4 bg-card sticky bottom-0 mt-4">
+          {/* Input Area - Fixed at bottom */}
+          <div className="flex-shrink-0">
             <div className="space-y-3">
               <div className="flex gap-2">
                 <Textarea
@@ -684,6 +685,57 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           </div>
         </CardContent>
       </Card>
+
+      {/* Console Section */}
+      {showConsole && (
+        <Card className="flex flex-col">
+          <CardHeader className="flex-shrink-0 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Terminal className="w-4 h-4" />
+                Server Console ({serverMessages.length} messages)
+              </CardTitle>
+              <Button
+                onClick={clearServerMessages}
+                variant="outline"
+                size="sm"
+                className="text-xs"
+              >
+                Clear Console
+              </Button>
+            </div>
+          </CardHeader>
+          
+          <Separator />
+          
+          <CardContent className="flex-1 p-2 overflow-auto">
+            <div className="space-y-1 text-xs font-mono">
+              {serverMessages.length === 0 ? (
+                <div className="text-muted-foreground italic text-center py-4">
+                  No server messages yet. Events will appear here when they occur.
+                </div>
+              ) : (
+                serverMessages.map((msg) => (
+                  <div key={msg.id} className="p-2 rounded bg-muted/30 border-l-2 border-blue-500">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`font-medium ${getServerMessageTypeColor(msg.type)}`}>
+                        [{msg.event}]
+                      </span>
+                      <span className="text-muted-foreground">
+                        {formatTimestamp(msg.timestamp)}
+                      </span>
+                    </div>
+                    <pre className="whitespace-pre-wrap text-xs overflow-x-auto">
+                      {JSON.stringify(msg.data, null, 2)}
+                    </pre>
+                  </div>
+                ))
+              )}
+              <div ref={consoleEndRef} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
