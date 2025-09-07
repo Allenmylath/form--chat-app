@@ -17,7 +17,6 @@ import {
   EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useRTVIClientEvent } from "@pipecat-ai/client-react";
 import { RTVIEvent } from "@pipecat-ai/client-js";
 
 interface ChatBoxProps {
@@ -133,7 +132,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     console.log('🧹 Server message console cleared');
   }, []);
 
-  // Set up comprehensive event listeners
+  // FIXED: Comprehensive event monitoring using the correct approach
   useEffect(() => {
     const actualClient = pipecatClient.client;
     
@@ -149,9 +148,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       RTVIEvent.Connected,
       RTVIEvent.Disconnected,
       RTVIEvent.TransportStateChanged,
-      RTVIEvent.Config,
-      RTVIEvent.ConfigDescribe,
-      RTVIEvent.ActionsAvailable,
       RTVIEvent.BotConnected,
       RTVIEvent.BotDisconnected,
       RTVIEvent.BotReady,
@@ -171,7 +167,8 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       RTVIEvent.TrackStopped,
       RTVIEvent.Error,
       RTVIEvent.MessageError,
-      RTVIEvent.DeviceError
+      RTVIEvent.ServerMessage, // This is the correct event for server messages
+      RTVIEvent.Metrics
     ];
 
     // Create handlers for all events
@@ -184,6 +181,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       
       actualClient.on(eventType, eventHandlers[eventType]);
     });
+
+    // FIXED: Correct server message handling using event listener
+    const handleServerMessage = (data: any) => {
+      logServerMessage(data, "SERVER_MESSAGE_DIRECT");
+      console.log("📨 Direct server message received:", data);
+    };
+
+    actualClient.on(RTVIEvent.ServerMessage, handleServerMessage);
 
     // Handler for user transcription events - BOTH interim and final
     const handleUserTranscript = (data: any) => {
@@ -254,7 +259,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     actualClient.on(RTVIEvent.UserTranscript, handleUserTranscript);
     actualClient.on(RTVIEvent.BotTranscript, handleBotTranscript);
 
-    console.log(`✅ Monitoring ${eventsToMonitor.length} RTVI events`);
+    console.log(`✅ Monitoring ${eventsToMonitor.length} RTVI events including ServerMessage`);
 
     // Cleanup event listeners
     return () => {
@@ -266,45 +271,12 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       });
       
       if (typeof actualClient.off === 'function') {
+        actualClient.off(RTVIEvent.ServerMessage, handleServerMessage);
         actualClient.off(RTVIEvent.UserTranscript, handleUserTranscript);
         actualClient.off(RTVIEvent.BotTranscript, handleBotTranscript);
       }
     };
   }, [pipecatClient.client, logServerMessage]);
-
-  // Enhanced server message monitoring
-  useEffect(() => {
-    if (pipecatClient.client && isConnected) {
-      console.log("🔍 Setting up comprehensive server message monitoring...");
-      
-      // Monitor all server messages through onServerMessage if available
-      if (typeof pipecatClient.client.onServerMessage === 'function') {
-        pipecatClient.client.onServerMessage((message: any) => {
-          logServerMessage(message, "SERVER_MESSAGE");
-        });
-        console.log("✅ Server message monitoring active");
-      } else {
-        console.warn("❌ onServerMessage not available on client");
-      }
-
-      // Also try to monitor transport-level messages if possible
-      if (pipecatClient.client.transport && typeof pipecatClient.client.transport.on === 'function') {
-        const transport = pipecatClient.client.transport;
-        
-        const transportMessageHandler = (message: any) => {
-          logServerMessage(message, "TRANSPORT_MESSAGE");
-        };
-
-        transport.on('message', transportMessageHandler);
-        
-        return () => {
-          if (typeof transport.off === 'function') {
-            transport.off('message', transportMessageHandler);
-          }
-        };
-      }
-    }
-  }, [pipecatClient.client, isConnected, logServerMessage]);
 
   // Auto-scroll to bottom with better reliability
   useEffect(() => {
@@ -468,6 +440,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       'USER_TRANSCRIPT': 'text-blue-600',
       'BOT_TRANSCRIPT': 'text-green-600',
       'SERVER_MESSAGE': 'text-purple-600',
+      'SERVER_MESSAGE_DIRECT': 'text-purple-700',
       'RTVI_EVENT': 'text-orange-600',
       'TRANSPORT_MESSAGE': 'text-cyan-600',
       'FUNCTION_CALL': 'text-indigo-600',
