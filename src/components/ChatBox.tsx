@@ -72,6 +72,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
       return;
     }
 
+
     // Handler for user transcription events - BOTH interim and final
     const handleUserTranscript = (data: any) => {
       console.log("🎤 User transcription event:", JSON.stringify(data, null, 2));
@@ -115,6 +116,14 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         }
       }
     };
+        // Add this useEffect to log all server messages
+    useEffect(() => {
+      if (pipecatClient.client && isConnected) {
+        pipecatClient.client.onServerMessage((message) => {
+          console.log("📨 RTVI Server Message:", message);
+        });
+      }
+    }, [pipecatClient.client, isConnected]);
 
     // Handler for bot transcription (what the bot says) - AGGREGATED
     const handleBotTranscript = (data: any) => {
