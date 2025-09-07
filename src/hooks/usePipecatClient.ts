@@ -88,6 +88,9 @@ interface UsePipecatClientReturn {
   registerFunctionCallHandler: (functionName: string, callback: FunctionCallCallback) => void;
   setLogLevel: (level: number) => void;
   
+  // Server message handling
+  onServerMessage: (callback: (message: any) => void) => void;
+  
   // Utility methods
   clearMessages: () => void;
   clearError: () => void;
@@ -527,7 +530,7 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
       handleError(err, 'Start Bot And Connect');
       setIsConnecting(false);
     }
-  }, [initializeClient, handleError]);
+  }, [client, initializeClient, handleError]);
 
   const disconnect = useCallback(async () => {
     console.log('Disconnecting from bot...');
@@ -842,6 +845,27 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     }
   }, [client, handleError]);
 
+  // Server message handling
+  const onServerMessage = useCallback((callback: (message: any) => void) => {
+    if (!client) {
+      console.warn('Cannot set server message handler: client not available');
+      return;
+    }
+
+    try {
+      if (typeof client.onServerMessage === 'function') {
+        client.onServerMessage(callback);
+        console.log('✅ Server message handler registered successfully');
+      } else {
+        console.warn('❌ onServerMessage method not available on PipecatClient');
+        console.log('Available client methods:', Object.getOwnPropertyNames(client));
+        console.log('Client prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)));
+      }
+    } catch (err: any) {
+      console.error('Failed to register server message handler:', err);
+    }
+  }, [client]);
+
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
@@ -921,6 +945,9 @@ export const usePipecatClient = (options: UsePipecatClientOptions = {}): UsePipe
     tracks,
     registerFunctionCallHandler,
     setLogLevel,
+    
+    // Server message handling
+    onServerMessage,
     
     // Utility methods
     clearMessages,
