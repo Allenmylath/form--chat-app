@@ -55,6 +55,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+  const topInViewRef = useRef<HTMLDivElement>(null);
 
   const {
     isConnected,
@@ -136,6 +137,11 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
     setServerMessages([]);
     console.clear();
     console.log('🧹 Server message console cleared');
+  }, []);
+
+  // Ensure chat container is fully in view on initial load
+  useEffect(() => {
+    topInViewRef.current?.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' });
   }, []);
 
   // FIXED: Comprehensive event monitoring using the correct approach
@@ -410,7 +416,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   return (
     <div className={`${showConsole ? 'h-[1200px]' : 'h-[1000px]'} flex flex-col ${className}`}>
       {/* Fixed Height Container with Scroll */}
-      <div className="h-full overflow-auto">
+      <div ref={topInViewRef} className="h-full overflow-auto">
         <Card className="flex flex-col h-full">
           <CardHeader className="flex-shrink-0 pb-3">
             <div className="flex items-center justify-between">
