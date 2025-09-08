@@ -335,295 +335,297 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
   };
 
   return (
-    <Card className={`h-full flex flex-col ${className}`}>
-      <CardHeader className="pb-4 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <LayoutList className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              Quiz Form Area
-              {isUserSpeaking && <Mic className="w-4 h-4 text-green-600 animate-pulse" />}
-              {isBotSpeaking && <div className="w-4 h-4 bg-blue-600 rounded-full animate-pulse" />}
-            </CardTitle>
-            <CardDescription>
-              {quizResults 
-                ? "Quiz completed - Results available"
-                : currentQuestion 
-                  ? `Question ${currentQuestion.question_index + 1} of ${currentQuestion.total_questions}`
-                  : hasQuizStarted 
-                    ? "Waiting for next question..."
-                    : "Ready to receive quiz questions"
-              }
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-sm text-muted-foreground">
-              {quizResults ? `${quizResults.answers.length} questions` : `${answers.length} answered`}
+    <div className="h-[600px]">
+      <Card className={`h-full flex flex-col ${className}`}>
+        <CardHeader className="pb-4 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <LayoutList className="h-5 w-5 text-primary" />
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                Quiz Form Area
+                {isUserSpeaking && <Mic className="w-4 h-4 text-green-600 animate-pulse" />}
+                {isBotSpeaking && <div className="w-4 h-4 bg-blue-600 rounded-full animate-pulse" />}
+              </CardTitle>
+              <CardDescription>
+                {quizResults 
+                  ? "Quiz completed - Results available"
+                  : currentQuestion 
+                    ? `Question ${currentQuestion.question_index + 1} of ${currentQuestion.total_questions}`
+                    : hasQuizStarted 
+                      ? "Waiting for next question..."
+                      : "Ready to receive quiz questions"
+                }
+              </CardDescription>
             </div>
-            {isConnected && isBotReady ? (
-              <Badge variant="secondary" className="text-xs">
-                <CheckCircle2 className="w-3 h-3 mr-1" />
-                Ready
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs">
-                <Clock className="w-3 h-3 mr-1" />
-                Waiting
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        {currentQuestion && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Progress</span>
-              <span>{Math.round(getProgressPercentage())}%</span>
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-muted-foreground">
+                {quizResults ? `${quizResults.answers.length} questions` : `${answers.length} answered`}
+              </div>
+              {isConnected && isBotReady ? (
+                <Badge variant="secondary" className="text-xs">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Ready
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">
+                  <Clock className="w-3 h-3 mr-1" />
+                  Waiting
+                </Badge>
+              )}
             </div>
-            <Progress value={getProgressPercentage()} className="w-full" />
           </div>
-        )}
-      </CardHeader>
 
-      <CardContent className="p-0 flex flex-col flex-1 min-h-0">
-        <ScrollArea ref={scrollAreaRef} className="flex-1 px-6">
-          <div className="py-6">
-            {/* Quiz Results Display */}
-            {quizResults && (
-              <div className="space-y-6">
-                {/* Results Header */}
-                <div className="text-center space-y-4 pb-6 border-b">
-                  <div className="flex justify-center">
-                    <Trophy className="h-16 w-16 text-primary mb-4" />
-                  </div>
-                  <h2 className="text-2xl font-bold">Quiz Complete!</h2>
-                  
-                  {/* Score Display */}
-                  <div className="space-y-2">
-                    <div className={`text-4xl font-bold ${getScoreColor(quizResults.percentage)}`}>
-                      {quizResults.percentage.toFixed(1)}%
-                    </div>
-                    <div className="text-muted-foreground">
-                      {quizResults.total_score} out of {quizResults.max_score} points
-                    </div>
-                    <Badge variant={getScoreBadgeVariant(quizResults.percentage)} className="text-sm px-3 py-1">
-                      <Star className="w-4 h-4 mr-1" />
-                      {quizResults.percentage >= 90 ? "Excellent" : 
-                       quizResults.percentage >= 80 ? "Great" : 
-                       quizResults.percentage >= 70 ? "Good" : "Keep Learning"}
-                    </Badge>
-                  </div>
-                  
-                  {/* Result Message */}
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 max-w-2xl mx-auto">
-                    <p className="text-sm leading-relaxed">{quizResults.result_message}</p>
-                  </div>
-                </div>
+          {/* Progress Bar */}
+          {currentQuestion && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Progress</span>
+                <span>{Math.round(getProgressPercentage())}%</span>
+              </div>
+              <Progress value={getProgressPercentage()} className="w-full" />
+            </div>
+          )}
+        </CardHeader>
 
-                {/* Detailed Results */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Award className="h-5 w-5 text-primary" />
-                    Question Breakdown
-                  </h3>
-                  
-                  <div className="space-y-3">
-                    {quizResults.answers.map((answer, index) => (
-                      <div key={answer.question_id} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
-                            {answer.question_index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium text-sm leading-relaxed">
-                              {answer.question_text}
-                            </h4>
-                            <div className="mt-2 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
-                                  {answer.selected_option}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground">
-                                  {answer.option_text}
-                                </span>
-                              </div>
-                              <Badge variant="secondary" className="text-xs">
-                                {answer.points_earned} pts
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
+        <CardContent className="p-0 flex flex-col flex-1 min-h-0">
+          <ScrollArea ref={scrollAreaRef} className="flex-1 px-6">
+            <div className="py-6">
+              {/* Quiz Results Display */}
+              {quizResults && (
+                <div className="space-y-6">
+                  {/* Results Header */}
+                  <div className="text-center space-y-4 pb-6 border-b">
+                    <div className="flex justify-center">
+                      <Trophy className="h-16 w-16 text-primary mb-4" />
+                    </div>
+                    <h2 className="text-2xl font-bold">Quiz Complete!</h2>
+                    
+                    {/* Score Display */}
+                    <div className="space-y-2">
+                      <div className={`text-4xl font-bold ${getScoreColor(quizResults.percentage)}`}>
+                        {quizResults.percentage.toFixed(1)}%
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-4 border-t">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      setQuizResults(null);
-                      setAnswers([]);
-                      setHasQuizStarted(false);
-                    }}
-                  >
-                    Start New Quiz
-                  </Button>
-                  <Button 
-                    variant="default" 
-                    className="flex-1"
-                    onClick={handleRequestQuestion}
-                    disabled={!isConnected || !isBotReady}
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Request Another Quiz
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* No Question State */}
-            {!currentQuestion && !hasQuizStarted && !quizResults && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <HelpCircle className="h-16 w-16 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Ready for Quiz Questions</h3>
-                <p className="text-muted-foreground mb-6">
-                  Connect to the voice assistant and request a quiz to get started
-                </p>
-                {isConnected && isBotReady && (
-                  <Button onClick={handleRequestQuestion}>
-                    <Send className="w-4 h-4 mr-2" />
-                    Request Quiz Question
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Waiting for Next Question */}
-            {!currentQuestion && hasQuizStarted && !quizResults && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-                <h3 className="text-lg font-semibold mb-2">Waiting for Next Question</h3>
-                <p className="text-muted-foreground">
-                  The assistant is preparing your next quiz question...
-                </p>
-              </div>
-            )}
-
-            {/* Current Question Display */}
-            {currentQuestion && !quizResults && (
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
-                      {currentQuestion.question_index + 1}
+                      <div className="text-muted-foreground">
+                        {quizResults.total_score} out of {quizResults.max_score} points
+                      </div>
+                      <Badge variant={getScoreBadgeVariant(quizResults.percentage)} className="text-sm px-3 py-1">
+                        <Star className="w-4 h-4 mr-1" />
+                        {quizResults.percentage >= 90 ? "Excellent" : 
+                         quizResults.percentage >= 80 ? "Great" : 
+                         quizResults.percentage >= 70 ? "Good" : "Keep Learning"}
+                      </Badge>
                     </div>
-                    <div className="flex-1">
-                      <Label className="text-lg font-semibold leading-relaxed">
-                        {currentQuestion.question_text}
-                      </Label>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Question ID: {currentQuestion.question_id}
-                      </p>
+                    
+                    {/* Result Message */}
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 max-w-2xl mx-auto">
+                      <p className="text-sm leading-relaxed">{quizResults.result_message}</p>
                     </div>
                   </div>
 
-                  <div className="ml-11">
-                    <RadioGroup
-                      value={selectedAnswer}
-                      onValueChange={handleOptionSelect}
-                      className="space-y-3"
-                      disabled={isLoading}
-                    >
-                      {currentQuestion.options.map((option) => (
-                        <div key={option.label} className="flex items-center space-x-3">
-                          <RadioGroupItem 
-                            value={option.label} 
-                            id={`${currentQuestion.question_id}-${option.label}`} 
-                          />
-                          <Label
-                            htmlFor={`${currentQuestion.question_id}-${option.label}`}
-                            className={`flex-1 py-4 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 text-base ${
-                              selectedAnswer === option.label 
-                                ? 'bg-primary/10 border-primary' 
-                                : ''
-                            }`}
-                          >
-                            <div className="flex justify-between items-center">
-                              <span>
-                                <strong>{option.label})</strong> {option.text}
-                              </span>
-                              <Badge variant="outline" className="text-xs">
-                                {option.score} pts
-                              </Badge>
+                  {/* Detailed Results */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Award className="h-5 w-5 text-primary" />
+                      Question Breakdown
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      {quizResults.answers.map((answer, index) => (
+                        <div key={answer.question_id} className="border rounded-lg p-4 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
+                              {answer.question_index + 1}
                             </div>
-                          </Label>
+                            <div className="flex-1">
+                              <h4 className="font-medium text-sm leading-relaxed">
+                                {answer.question_text}
+                              </h4>
+                              <div className="mt-2 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {answer.selected_option}
+                                  </Badge>
+                                  <span className="text-sm text-muted-foreground">
+                                    {answer.option_text}
+                                  </span>
+                                </div>
+                                <Badge variant="secondary" className="text-xs">
+                                  {answer.points_earned} pts
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       ))}
-                    </RadioGroup>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-4 border-t">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        setQuizResults(null);
+                        setAnswers([]);
+                        setHasQuizStarted(false);
+                      }}
+                    >
+                      Start New Quiz
+                    </Button>
+                    <Button 
+                      variant="default" 
+                      className="flex-1"
+                      onClick={handleRequestQuestion}
+                      disabled={!isConnected || !isBotReady}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      Request Another Quiz
+                    </Button>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Previous Answers Summary */}
-            {answers.length > 0 && !quizResults && (
-              <div className="mt-8 pt-6 border-t">
-                <h4 className="text-sm font-medium text-muted-foreground mb-3">
-                  Previous Answers ({answers.length})
-                </h4>
-                <div className="space-y-2">
-                  {answers.slice(-3).map((answer) => (
-                    <div key={answer.question_id} className="text-xs bg-muted/30 p-2 rounded">
-                      <span className="font-medium">Q{answer.question_index + 1}:</span> {answer.selected_option.label}) {answer.selected_option.text} 
-                      <span className="text-muted-foreground ml-2">
-                        ({answer.selected_option.score} pts at {formatTimestamp(answer.timestamp)})
-                      </span>
-                    </div>
-                  ))}
-                  {answers.length > 3 && (
-                    <div className="text-xs text-muted-foreground">
-                      ... and {answers.length - 3} more answers
-                    </div>
+              {/* No Question State */}
+              {!currentQuestion && !hasQuizStarted && !quizResults && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <HelpCircle className="h-16 w-16 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Ready for Quiz Questions</h3>
+                  <p className="text-muted-foreground mb-6">
+                    Connect to the voice assistant and request a quiz to get started
+                  </p>
+                  {isConnected && isBotReady && (
+                    <Button onClick={handleRequestQuestion}>
+                      <Send className="w-4 h-4 mr-2" />
+                      Request Quiz Question
+                    </Button>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-
-        {/* Submit Button */}
-        {currentQuestion && !quizResults && (
-          <div className="border-t bg-card p-6 space-y-4 flex-shrink-0">
-            <Button
-              onClick={handleSubmitAnswer}
-              className="w-full"
-              disabled={!selectedAnswer || isLoading || !isConnected || !isBotReady}
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Submitting...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Submit Answer
-                </>
               )}
-            </Button>
-            
-            {isConnected && isBotReady && (
-              <p className="text-xs text-muted-foreground text-center">
-                Your answer will be sent to the voice assistant
-              </p>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+
+              {/* Waiting for Next Question */}
+              {!currentQuestion && hasQuizStarted && !quizResults && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <h3 className="text-lg font-semibold mb-2">Waiting for Next Question</h3>
+                  <p className="text-muted-foreground">
+                    The assistant is preparing your next quiz question...
+                  </p>
+                </div>
+              )}
+
+              {/* Current Question Display */}
+              {currentQuestion && !quizResults && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
+                        {currentQuestion.question_index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-lg font-semibold leading-relaxed">
+                          {currentQuestion.question_text}
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Question ID: {currentQuestion.question_id}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="ml-11">
+                      <RadioGroup
+                        value={selectedAnswer}
+                        onValueChange={handleOptionSelect}
+                        className="space-y-3"
+                        disabled={isLoading}
+                      >
+                        {currentQuestion.options.map((option) => (
+                          <div key={option.label} className="flex items-center space-x-3">
+                            <RadioGroupItem 
+                              value={option.label} 
+                              id={`${currentQuestion.question_id}-${option.label}`} 
+                            />
+                            <Label
+                              htmlFor={`${currentQuestion.question_id}-${option.label}`}
+                              className={`flex-1 py-4 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 text-base ${
+                                selectedAnswer === option.label 
+                                  ? 'bg-primary/10 border-primary' 
+                                  : ''
+                              }`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <span>
+                                  <strong>{option.label})</strong> {option.text}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {option.score} pts
+                                </Badge>
+                              </div>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Previous Answers Summary */}
+              {answers.length > 0 && !quizResults && (
+                <div className="mt-8 pt-6 border-t">
+                  <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                    Previous Answers ({answers.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {answers.slice(-3).map((answer) => (
+                      <div key={answer.question_id} className="text-xs bg-muted/30 p-2 rounded">
+                        <span className="font-medium">Q{answer.question_index + 1}:</span> {answer.selected_option.label}) {answer.selected_option.text} 
+                        <span className="text-muted-foreground ml-2">
+                          ({answer.selected_option.score} pts at {formatTimestamp(answer.timestamp)})
+                        </span>
+                      </div>
+                    ))}
+                    {answers.length > 3 && (
+                      <div className="text-xs text-muted-foreground">
+                        ... and {answers.length - 3} more answers
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Submit Button */}
+          {currentQuestion && !quizResults && (
+            <div className="border-t bg-card p-6 space-y-4 flex-shrink-0">
+              <Button
+                onClick={handleSubmitAnswer}
+                className="w-full"
+                disabled={!selectedAnswer || isLoading || !isConnected || !isBotReady}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Submit Answer
+                  </>
+                )}
+              </Button>
+              
+              {isConnected && isBotReady && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Your answer will be sent to the voice assistant
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
