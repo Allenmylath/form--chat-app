@@ -426,17 +426,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
               </CardTitle>
               
               <div className="flex items-center gap-2">
-                {/* Console Toggle */}
-                <Button
-                  variant={showConsole ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowConsole(!showConsole)}
-                  className="gap-2"
-                >
-                  {showConsole ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  Console
-                </Button>
-
                 {/* Mic Toggle */}
                 <Button
                   variant={isMicEnabled ? "default" : "outline"}
