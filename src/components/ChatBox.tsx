@@ -685,57 +685,6 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
           </CardContent>
         </Card>
       </div>
-
-      {/* Console Section */}
-      {showConsole && (
-        <Card className="flex flex-col h-[240px] mt-2">
-          <CardHeader className="flex-shrink-0 pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Terminal className="w-4 h-4" />
-                Server Console ({serverMessages.length} messages)
-              </CardTitle>
-              <Button
-                onClick={clearServerMessages}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-              >
-                Clear Console
-              </Button>
-            </div>
-          </CardHeader>
-          
-          <Separator />
-          
-          <CardContent className="flex-1 p-2 overflow-auto">
-            <div className="space-y-1 text-xs font-mono">
-              {serverMessages.length === 0 ? (
-                <div className="text-muted-foreground italic text-center py-4">
-                  No server messages yet. Events will appear here when they occur.
-                </div>
-              ) : (
-                serverMessages.map((msg) => (
-                  <div key={msg.id} className="p-2 rounded bg-muted/30 border-l-2 border-blue-500">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-medium ${getServerMessageTypeColor(msg.type)}`}>
-                        [{msg.event}]
-                      </span>
-                      <span className="text-muted-foreground">
-                        {formatTimestamp(msg.timestamp)}
-                      </span>
-                    </div>
-                    <pre className="whitespace-pre-wrap text-xs overflow-x-auto">
-                      {JSON.stringify(msg.data, null, 2)}
-                    </pre>
-                  </div>
-                ))
-              )}
-              <div ref={consoleEndRef} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
