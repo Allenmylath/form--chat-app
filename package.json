@@ -4,10 +4,15 @@
     "private": true,
     "scripts": {
         "dev": "next dev --turbopack",
-        "build": "next build",
+        "build": "next build", 
         "start": "next start",
         "lint": "next lint"
     },
+    "engines": {
+        "node": ">=18.18 <23",
+        "npm": ">=9"
+    },
+    "packageManager": "npm@10",
     "dependencies": {
         "@babel/parser": "^7.28.0",
         "@daily-co/daily-js": "^0.83.1",
