@@ -112,10 +112,5 @@
         "tailwindcss": "^4",
         "tw-animate-css": "^1.3.6",
         "typescript": "^5"
-    },
-    "overrides": {
-        "@pipecat-ai/client-js": "1.2.0",
-        "@pipecat-ai/daily-transport": "1.2.1",
-        "@pipecat-ai/websocket-transport": "1.2.1"
     }
 }
