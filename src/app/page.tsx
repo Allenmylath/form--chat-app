@@ -1,5 +1,8 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import FormArea from "@/components/FormArea";
 import ChatBox from "@/components/ChatBox";
 import { usePipecatClient } from "@/hooks/usePipecatClient";
