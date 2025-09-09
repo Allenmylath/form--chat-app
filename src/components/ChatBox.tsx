@@ -48,7 +48,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
   const [messages, setMessages] = useState<BotMessage[]>([]);
   const [serverMessages, setServerMessages] = useState<ServerMessage[]>([]);
   const [showConsole, setShowConsole] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   // Track active interim transcripts by user_id
   const [activeTranscripts, setActiveTranscripts] = useState<Map<string, string>>(new Map());
   // Track if user has manually scrolled up
