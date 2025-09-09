@@ -124,12 +124,12 @@ export default function Page() {
         </header>
 
         {/* Main Content Grid - Natural Height */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-          <div className="lg:col-span-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-6 max-w-7xl mx-auto">
+          <div>
             <FormArea pipecatClient={pipecatClient} />
           </div>
           
-          <div className="lg:col-span-2">
+          <div>
             <ChatBox pipecatClient={pipecatClient} />
           </div>
         </div>

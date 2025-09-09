@@ -693,7 +693,7 @@ export default function ChatBox({ pipecatClient, className = "" }: ChatBoxProps)
         <Button
           onClick={() => setIsChatOpen(true)}
           size="icon"
-          className={`fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg bg-primary text-primary-foreground ${isBotSpeaking ? 'animate-bounce ring-2 ring-primary' : ''}`}
+          className={`h-12 w-12 rounded-full shadow-lg bg-primary text-primary-foreground ${isBotSpeaking ? 'animate-bounce ring-2 ring-primary' : ''}`}
           aria-label="Open chat"
         >
           <Bot className="w-6 h-6" />
