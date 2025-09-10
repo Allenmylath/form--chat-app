@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { LayoutList, HelpCircle, Send, Mic, CheckCircle2, Clock, Trophy, Award, Star } from "lucide-react";
 import { RTVIEvent } from "@pipecat-ai/client-js";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface QuizOption {
   label: string;
@@ -515,61 +516,70 @@ export default function FormArea({ pipecatClient, className = "" }: FormAreaProp
               )}
 
               {/* Current Question Display */}
-              {currentQuestion && !quizResults && (
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
-                        {currentQuestion.question_index + 1}
+              <AnimatePresence mode="wait">
+                {currentQuestion && !quizResults && (
+                  <motion.div
+                    key={currentQuestion.question_id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="space-y-6"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center">
+                          {currentQuestion.question_index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <Label className="text-lg font-semibold leading-relaxed">
+                            {currentQuestion.question_text}
+                          </Label>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Question ID: {currentQuestion.question_id}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <Label className="text-lg font-semibold leading-relaxed">
-                          {currentQuestion.question_text}
-                        </Label>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Question ID: {currentQuestion.question_id}
-                        </p>
+
+                      <div className="ml-11">
+                        <RadioGroup
+                          value={selectedAnswer}
+                          onValueChange={handleOptionSelect}
+                          className="space-y-3"
+                          disabled={isLoading}
+                        >
+                          {currentQuestion.options.map((option) => (
+                            <div key={option.label} className="flex items-center space-x-3">
+                              <RadioGroupItem 
+                                value={option.label} 
+                                id={`${currentQuestion.question_id}-${option.label}`} 
+                              />
+                              <Label
+                                htmlFor={`${currentQuestion.question_id}-${option.label}`}
+                                className={`flex-1 py-4 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 text-base ${
+                                  selectedAnswer === option.label 
+                                    ? 'bg-primary/10 border-primary' 
+                                    : ''
+                                }`}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span>
+                                    <strong>{option.label})</strong> {option.text}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {option.score} pts
+                                  </Badge>
+                                </div>
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
                       </div>
                     </div>
-
-                    <div className="ml-11">
-                      <RadioGroup
-                        value={selectedAnswer}
-                        onValueChange={handleOptionSelect}
-                        className="space-y-3"
-                        disabled={isLoading}
-                      >
-                        {currentQuestion.options.map((option) => (
-                          <div key={option.label} className="flex items-center space-x-3">
-                            <RadioGroupItem 
-                              value={option.label} 
-                              id={`${currentQuestion.question_id}-${option.label}`} 
-                            />
-                            <Label
-                              htmlFor={`${currentQuestion.question_id}-${option.label}`}
-                              className={`flex-1 py-4 px-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 text-base ${
-                                selectedAnswer === option.label 
-                                  ? 'bg-primary/10 border-primary' 
-                                  : ''
-                              }`}
-                            >
-                              <div className="flex justify-between items-center">
-                                <span>
-                                  <strong>{option.label})</strong> {option.text}
-                                </span>
-                                <Badge variant="outline" className="text-xs">
-                                  {option.score} pts
-                                </Badge>
-                              </div>
-                            </Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
-                    </div>
-                  </div>
-                </div>
-              )}
-
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
               {/* Previous Answers Summary */}
               {answers.length > 0 && !quizResults && (
                 <div className="mt-8 pt-6 border-t">
